@@ -3375,6 +3375,7 @@ dependencies = [
  "rust-motion-rasterizer",
  "serde",
  "serde_json",
+ "static_assertions",
  "taffy",
  "thiserror 1.0.69",
 ]
@@ -3599,6 +3600,7 @@ dependencies = [
  "rustybuzz",
  "serde",
  "serde_json",
+ "sha2",
  "symphonia",
  "tempfile",
  "thiserror 1.0.69",

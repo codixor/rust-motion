@@ -39,8 +39,15 @@ pub enum LayoutChild {
     Nested(LayoutBox),
 }
 
+// SAFETY: taffy 0.12's Style contains a tagged *const () only for calc()
+// values. rust-motion constructs styles from numeric dimensions, lengths and
+// percentages, never from CompactLength::calc, so the pointer is a tag or f32
+// bits and is never dereferenced. The compile-time assertion below prevents a
+// future taffy/field change from silently dropping the thread-safety we rely on
+// for the SceneEmitter bound.
 unsafe impl Send for LayoutChild {}
 unsafe impl Sync for LayoutChild {}
+static_assertions::assert_impl_all!(LayoutChild: Send, Sync);
 
 /// Declarative layout container powered by Taffy.
 #[derive(Debug, Clone)]
@@ -51,8 +58,10 @@ pub struct LayoutBox {
     pub border: Option<(Color, f32, f32)>, // color, width, radius
 }
 
+// SAFETY: see LayoutChild above. LayoutBox holds the same taffy Style.
 unsafe impl Send for LayoutBox {}
 unsafe impl Sync for LayoutBox {}
+static_assertions::assert_impl_all!(LayoutBox: Send, Sync);
 
 impl Default for LayoutBox {
     fn default() -> Self {

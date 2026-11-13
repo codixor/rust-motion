@@ -10,6 +10,7 @@ readme.workspace      = true
 
 [dependencies]
 thiserror  = { workspace = true }
+sha2       = { workspace = true }
 image      = { workspace = true }
 tiny-skia  = { workspace = true }
 resvg      = { workspace = true, default-features = false }
@@ -49,6 +50,9 @@ lyon_tessellation = { workspace = true, optional = true }
 default = []
 # Enable wgpu GPU-accelerated offscreen rendering
 gpu = ["wgpu", "pollster", "lyon_tessellation"]
+# Opt-in only: generative provider request descriptors (Sora/Runway/ElevenLabs).
+# Never enable this for user flows; it is not linked by default.
+genai = []
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

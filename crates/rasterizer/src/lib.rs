@@ -37,6 +37,7 @@ pub mod exif_meta;
 pub mod film_emulation;
 pub mod font;
 pub mod frame_cache;
+#[cfg(feature = "genai")]
 pub mod genai_orchestrator;
 pub mod gif_cache;
 pub mod gltf;

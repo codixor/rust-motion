@@ -103,6 +103,7 @@ proptest          = "1"
 
 # Parallelism
 rayon             = "1"
+static_assertions = "1"
 
 # Web server & HTTP
 axum              = { version = "0.7", features = ["ws"] }

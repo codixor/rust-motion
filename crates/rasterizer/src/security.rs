@@ -4,16 +4,30 @@ use crate::backend::RasterError;
 use std::path::{Path, PathBuf};
 
 /// Media security sandbox policy controlling file access for video, audio, image, and Lottie assets.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+///
+/// The default is fail-closed: the Sandboxed variant with no allowed roots, so
+/// a caller that forgets to configure the policy cannot read host files. Opt
+/// in to broader access explicitly with permissive() or add roots with
+/// with_allowed_root().
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MediaSecurityPolicy {
-    /// Allow access to any local file or file:// URI that exists and can be resolved.
-    #[default]
-    Permissive,
     /// Strictly restrict media file access to designated root directories.
+    ///
+    /// This is the default variant; an empty root list rejects every path.
     Sandboxed {
         /// Canonicalized root paths permitted for file access.
         allowed_roots: Vec<PathBuf>,
     },
+    /// Allow access to any local file or file:// URI that exists and can be resolved.
+    Permissive,
+}
+
+impl Default for MediaSecurityPolicy {
+    fn default() -> Self {
+        Self::Sandboxed {
+            allowed_roots: Vec::new(),
+        }
+    }
 }
 
 impl MediaSecurityPolicy {

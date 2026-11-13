@@ -318,12 +318,13 @@ mod tests {
 
         let render = |cache: &LottieCache, frame: f32| {
             cache
-                .render(
+                .render_with_policy(
                     animation_path,
                     f64::from(frame) / 30.0,
                     100,
                     100,
                     LoopBehavior::Pause,
+                    &crate::security::MediaSecurityPolicy::permissive(),
                 )
                 .unwrap()
         };
@@ -351,7 +352,14 @@ mod tests {
 
         let render = |time_secs| {
             cache
-                .render(animation_path, time_secs, 100, 100, LoopBehavior::Unmount)
+                .render_with_policy(
+                    animation_path,
+                    time_secs,
+                    100,
+                    100,
+                    LoopBehavior::Unmount,
+                    &crate::security::MediaSecurityPolicy::permissive(),
+                )
                 .unwrap()
         };
 
@@ -376,7 +384,7 @@ mod tests {
         let (entry, _) = cache
             .get_or_load(
                 animation_path,
-                &crate::security::MediaSecurityPolicy::default(),
+                &crate::security::MediaSecurityPolicy::permissive(),
             )
             .unwrap();
 
@@ -395,7 +403,14 @@ mod tests {
 
         for time_secs in times {
             cache
-                .render(animation_path, time_secs, 100, 100, LoopBehavior::Pause)
+                .render_with_policy(
+                    animation_path,
+                    time_secs,
+                    100,
+                    100,
+                    LoopBehavior::Pause,
+                    &crate::security::MediaSecurityPolicy::permissive(),
+                )
                 .unwrap();
         }
 

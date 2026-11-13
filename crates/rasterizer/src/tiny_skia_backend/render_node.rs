@@ -163,6 +163,32 @@ pub(crate) fn render_node(
             )?;
         }
 
+        SceneNode::ImageBytes {
+            bytes,
+            x,
+            y,
+            w,
+            h,
+            fit,
+            opacity: node_opacity,
+        } => {
+            // The bytes path never consults MediaSecurityPolicy: the caller
+            // already owns the pixels and no host path can be read.
+            let source = resources.images.load_bytes(bytes, "<scene:image-bytes>")?;
+            draw_media(
+                pixmap,
+                &source,
+                "<scene:image-bytes>",
+                *x,
+                *y,
+                *w,
+                *h,
+                *fit,
+                opacity * node_opacity,
+                transform,
+            )?;
+        }
+
         SceneNode::Video {
             src,
             time,

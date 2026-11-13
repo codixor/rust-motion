@@ -1,15 +1,14 @@
 //! Font loading and text rasterization via `ab_glyph`.
 //!
-//! Font discovery follows a three-step priority order:
+//! Font discovery is deliberately deterministic:
 //!
-//! 1. `RUST_MOTION_FONT_PATH` environment variable — highest priority, useful for CI overrides.
-//! 2. Platform-specific system font search paths — picks up the user's installed fonts.
-//! 3. Bundled fallback (`NotoSans-Regular.ttf` compiled in with `include_bytes!`) — guarantees
-//!    reproducible rendering in any environment, including minimal Docker images and CI runners
-//!    that have no fonts installed.
+//! 1. `RUST_MOTION_FONT_PATH` environment variable, when set by the embedding host.
+//! 2. Bundled `NotoSans-Regular.ttf` compiled in with `include_bytes!`.
 //!
-//! The bundled font ensures that `FontCache::load()` always returns a loaded cache, eliminating
-//! the "No system font found" warning and making output deterministic across platforms.
+//! No platform font directories are read. The bundled font is SIL Open Font
+//! License 1.1 and is always available in minimal containers and CI runners.
+//! Node code that owns font bytes can register them with
+//! `FontCache::register_font_bytes` instead of passing a path.
 
 /// NotoSans Regular compiled into the binary as a reproducible font fallback.
 ///
@@ -227,33 +226,6 @@ pub struct TextBoxLayout {
     pub lines: Vec<PositionedTextLine>,
 }
 
-/// Platform-specific font search paths, in preference order.
-#[cfg(target_os = "macos")]
-const FONT_SEARCH_PATHS: &[&str] = &[
-    "/System/Library/Fonts/Supplemental/Arial.ttf",
-    "/System/Library/Fonts/Supplemental/Verdana.ttf",
-    "/System/Library/Fonts/Supplemental/Georgia.ttf",
-    "/System/Library/Fonts/SFNS.ttf",
-];
-
-#[cfg(target_os = "linux")]
-const FONT_SEARCH_PATHS: &[&str] = &[
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-    "/usr/share/fonts/TTF/DejaVuSans.ttf",
-];
-
-#[cfg(target_os = "windows")]
-const FONT_SEARCH_PATHS: &[&str] = &[
-    "C:\\Windows\\Fonts\\arial.ttf",
-    "C:\\Windows\\Fonts\\segoeui.ttf",
-    "C:\\Windows\\Fonts\\calibri.ttf",
-];
-
-#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-const FONT_SEARCH_PATHS: &[&str] = &[];
-
 /// A loaded, ready-to-use font.
 pub struct FontCache {
     font: Option<Arc<LoadedFont>>,
@@ -322,8 +294,7 @@ impl FontCache {
     /// Load a font using a three-step priority order:
     ///
     /// 1. `RUST_MOTION_FONT_PATH` env var — e.g. `RUST_MOTION_FONT_PATH=/fonts/MyFont.ttf`
-    /// 2. Platform system font search paths
-    /// 3. Bundled `NotoSans-Regular.ttf` — always succeeds
+    /// 2. Bundled `NotoSans-Regular.ttf` — always succeeds
     ///
     /// This method never returns a cache with `is_loaded() == false`.
     pub fn load() -> Self {
@@ -355,28 +326,7 @@ impl FontCache {
             }
         }
 
-        // Step 2: optional system font search if explicitly opted in
-        if std::env::var("RUST_MOTION_USE_SYSTEM_FONTS")
-            .map(|v| v == "1" || v == "true")
-            .unwrap_or(false)
-        {
-            for path in FONT_SEARCH_PATHS {
-                if let Ok(bytes) = std::fs::read(path) {
-                    if let Ok(font) = LoadedFont::from_bytes(bytes) {
-                        tracing::debug!(font_path = %path, "Loaded system font");
-                        return Self {
-                            font: Some(Arc::new(font)),
-                            path: Some(path.to_string()),
-                            assets: Mutex::new(HashMap::new()),
-                            rasterized: Mutex::new(HashMap::new()),
-                            atlas: Mutex::new(TextAtlas::new(2048, 2048)),
-                        };
-                    }
-                }
-            }
-        }
-
-        // Step 3: bundled NotoSans-Regular — guarantees deterministic cross-platform typography
+        // Step 2: bundled NotoSans-Regular — guarantees deterministic cross-platform typography
         tracing::debug!("Using bundled NotoSans-Regular as deterministic default font");
         Self::bundled()
     }
@@ -1802,14 +1752,13 @@ mod tests {
 
     #[test]
     fn explicit_font_sources_are_cached() {
-        let Some(path) = FONT_SEARCH_PATHS
-            .iter()
-            .find(|path| std::path::Path::new(path).is_file())
-        else {
-            return;
-        };
+        // Load the bundled OFL font from a file written from bytes; the test
+        // must not depend on host fonts or /usr/share/fonts.
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("NotoSans-Regular.ttf");
+        std::fs::write(&path, BUNDLED_FONT).unwrap();
         let cache = FontCache::headless();
-        let sources = vec![path.to_string()];
+        let sources = vec![path.display().to_string()];
         let first = cache.rasterize("Explicit", 24.0, &sources).unwrap();
         let second = cache.rasterize("Explicit", 24.0, &sources).unwrap();
 

@@ -4,6 +4,7 @@
 //! The rasterizer backend reads the scene and produces pixel output.
 
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// RGBA color: `[red, green, blue, alpha]` each in `0..=255`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -810,6 +811,22 @@ pub enum SceneNode {
     /// Local raster image asset. `src` may be a filesystem path or `file://` URI.
     Image {
         src: String,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        fit: ImageFit,
+        opacity: f32,
+    },
+
+    /// In-memory encoded image bytes (PNG, JPEG, WebP, SVG or DNG).
+    ///
+    /// This is the bytes-based counterpart of [`SceneNode::Image`]: it never
+    /// touches the filesystem or a media security policy. The CPU rasterizer
+    /// decodes and caches the bytes by content hash, so callers that already
+    /// hold an image handle can render it without staging a temp file.
+    ImageBytes {
+        bytes: Arc<Vec<u8>>,
         x: f32,
         y: f32,
         w: f32,

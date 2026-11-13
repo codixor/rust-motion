@@ -578,7 +578,8 @@ fn local_image_is_fitted_and_decoded_once() {
             opacity: 1.0,
         }],
     };
-    let backend = TinySkiaBackend::headless();
+    let backend =
+        TinySkiaBackend::headless_with_policy(crate::security::MediaSecurityPolicy::permissive());
     let config = FrameConfig::new(4, 4, 0, 30.0);
     let first = backend.render_frame(&scene, &config).unwrap();
     let second = backend.render_frame(&scene, &config).unwrap();
@@ -784,4 +785,26 @@ fn test_scene3d_rendering_via_backend() {
         center_px[1] > 50,
         "Green channel should be rendered from the 3D cube"
     );
+}
+
+#[test]
+fn image_bytes_render_without_file_access() {
+    // Bytes-only scene node: no path, data URI or security policy is involved.
+    // If the renderer tried to read the host filesystem this SVG would fail.
+    let svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="#00ff00"/></svg>"##.to_vec();
+    let mut scene = Scene::new();
+    scene.push(SceneNode::ImageBytes {
+        bytes: std::sync::Arc::new(svg),
+        x: 0.0,
+        y: 0.0,
+        w: 10.0,
+        h: 10.0,
+        fit: ImageFit::Fill,
+        opacity: 1.0,
+    });
+
+    let img = render(&scene, 10, 10);
+    let px = img.get_pixel(5, 5);
+    assert!(px[1] > 240, "green image bytes should render: {px:?}");
+    assert_eq!(px[3], 255, "rendered bytes must be opaque");
 }

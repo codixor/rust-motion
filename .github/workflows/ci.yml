@@ -131,3 +131,30 @@ jobs:
 
       - name: Run WASM crate native unit tests
         run: cargo test --locked -p rust-motion-wasm
+  # ── 5. Standalone H.264 encoder quality and robustness gate ─────────────
+  # Uses rust-motion-h264enc directly (no renderer crate): CRF 20 PSNR >= 38 dB
+  # on a generated RGBA fixture, then odd-size encodes must never panic.
+  h264_encoder_gate:
+    name: H.264 Encoder Quality Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install FFmpeg and system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libssl-dev
+
+      - name: Build h264enc gate
+        run: cargo build --locked -p rust-motion-h264enc --tests
+
+      - name: CRF 20 PSNR gate and odd-size panic fuzz
+        run: cargo test --locked -p rust-motion-h264enc --test encoder_gate -- --nocapture

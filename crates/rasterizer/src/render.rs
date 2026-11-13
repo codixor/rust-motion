@@ -2672,7 +2672,8 @@ mod tests {
     fn test_audio_track_validation_rejects_invalid_volume() {
         let mut track = AudioTrack::new(std::env::current_exe().unwrap().display().to_string());
         track.volume = 1.5;
-        let error = validate_audio_tracks(&[track], &MediaSecurityPolicy::default()).unwrap_err();
+        let error =
+            validate_audio_tracks(&[track], &MediaSecurityPolicy::permissive()).unwrap_err();
         assert!(error.to_string().contains("volume must be between"));
     }
 
@@ -2681,14 +2682,14 @@ mod tests {
         let src = std::env::current_exe().unwrap().display().to_string();
         let mut negative_time = AudioTrack::new(&src);
         negative_time.volume_keyframes = vec![(-0.1, 0.5)];
-        let error =
-            validate_audio_tracks(&[negative_time], &MediaSecurityPolicy::default()).unwrap_err();
+        let error = validate_audio_tracks(&[negative_time], &MediaSecurityPolicy::permissive())
+            .unwrap_err();
         assert!(error.to_string().contains("keyframe time"));
 
         let mut invalid_gain = AudioTrack::new(src);
         invalid_gain.volume_keyframes = vec![(0.0, 1.1)];
         let error =
-            validate_audio_tracks(&[invalid_gain], &MediaSecurityPolicy::default()).unwrap_err();
+            validate_audio_tracks(&[invalid_gain], &MediaSecurityPolicy::permissive()).unwrap_err();
         assert!(error.to_string().contains("keyframe gain"));
     }
 

@@ -3,7 +3,9 @@
 use crate::backend::RasterError;
 use base64::Engine as _;
 use image::RgbaImage;
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};
 
 fn rasterize_svg(bytes: &[u8], source: &str) -> Result<RgbaImage, RasterError> {
@@ -35,12 +37,75 @@ fn rasterize_svg(bytes: &[u8], source: &str) -> Result<RgbaImage, RasterError> {
     })
 }
 
+/// Decodes encoded image bytes without touching the filesystem.
+///
+/// Supports PNG, JPEG, WebP, SVG and camera DNG. `is_svg` lets a path caller
+/// disambiguate by extension; bytes callers use [`looks_like_svg`].
+fn decode_image_bytes(bytes: &[u8], source: &str, is_svg: bool) -> Result<RgbaImage, RasterError> {
+    if is_svg {
+        return rasterize_svg(bytes, source);
+    }
+    if rust_motion_dng::sniff(bytes) {
+        let dng_img = rust_motion_dng::decode(bytes).map_err(|e| RasterError::ImageAsset {
+            path: source.to_string(),
+            reason: format!("failed to decode DNG: {e}"),
+        })?;
+        let mut rgba_bytes = Vec::with_capacity(dng_img.width * dng_img.height * 4);
+        for px in dng_img.rgba.chunks_exact(4) {
+            let to_srgb = |c: f32| -> u8 {
+                let s = if c <= 0.0031308 {
+                    12.92 * c
+                } else {
+                    1.055 * c.powf(1.0 / 2.4) - 0.055
+                };
+                (s * 255.0).clamp(0.0, 255.0).round() as u8
+            };
+            rgba_bytes.push(to_srgb(px[0]));
+            rgba_bytes.push(to_srgb(px[1]));
+            rgba_bytes.push(to_srgb(px[2]));
+            rgba_bytes.push((px[3] * 255.0).clamp(0.0, 255.0).round() as u8);
+        }
+        return RgbaImage::from_raw(dng_img.width as u32, dng_img.height as u32, rgba_bytes)
+            .ok_or_else(|| RasterError::ImageAsset {
+                path: source.to_string(),
+                reason: "failed to construct RGBA image from DNG".into(),
+            });
+    }
+    image::load_from_memory(bytes)
+        .map_err(|error| RasterError::ImageAsset {
+            path: source.to_string(),
+            reason: error.to_string(),
+        })
+        .map(|image| image.to_rgba8())
+}
+
+/// Cheap structural SVG sniff for bytes callers that have no filename.
+fn looks_like_svg(bytes: &[u8]) -> bool {
+    let text = std::str::from_utf8(bytes).unwrap_or("");
+    let text = text.trim_start_matches('\u{feff}').trim_start();
+    let head = text.get(..text.len().min(512)).unwrap_or(text);
+    text.starts_with("<svg") || (text.starts_with("<?xml") && head.contains("<svg"))
+}
+
+/// Lower-case SHA-256 key for the bytes cache.
+fn bytes_cache_key(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut key = String::with_capacity(7 + 64);
+    key.push_str("bytes:");
+    for byte in digest {
+        let _ = write!(key, "{byte:02x}");
+    }
+    key
+}
+
 pub(crate) struct ImageCache {
     decoded: Mutex<ImageCacheState>,
     max_bytes: usize,
 }
 
 const MAX_DATA_URI_BYTES: usize = 32 * 1024 * 1024;
+/// Maximum encoded image bytes accepted by [`ImageCache::load_bytes`].
+const MAX_IMAGE_BYTES: usize = 64 * 1024 * 1024;
 /// Default decoded image cache budget for the native backend.
 pub const DEFAULT_IMAGE_CACHE_BYTES: usize = 256 * 1024 * 1024;
 
@@ -130,49 +195,48 @@ impl ImageCache {
             path: canonical.display().to_string(),
             reason: error.to_string(),
         })?;
-        let decoded = if canonical
+        let is_svg = canonical
             .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"))
-        {
-            rasterize_svg(&bytes, &canonical.display().to_string())?
-        } else if canonical
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("dng"))
-            || rust_motion_dng::sniff(&bytes)
-        {
-            let dng_img = rust_motion_dng::decode(&bytes).map_err(|e| RasterError::ImageAsset {
-                path: canonical.display().to_string(),
-                reason: format!("failed to decode DNG: {e}"),
-            })?;
-            let mut rgba_bytes = Vec::with_capacity(dng_img.width * dng_img.height * 4);
-            for px in dng_img.rgba.chunks_exact(4) {
-                let to_srgb = |c: f32| -> u8 {
-                    let s = if c <= 0.0031308 {
-                        12.92 * c
-                    } else {
-                        1.055 * c.powf(1.0 / 2.4) - 0.055
-                    };
-                    (s * 255.0).clamp(0.0, 255.0).round() as u8
-                };
-                rgba_bytes.push(to_srgb(px[0]));
-                rgba_bytes.push(to_srgb(px[1]));
-                rgba_bytes.push(to_srgb(px[2]));
-                rgba_bytes.push((px[3] * 255.0).clamp(0.0, 255.0).round() as u8);
-            }
-            RgbaImage::from_raw(dng_img.width as u32, dng_img.height as u32, rgba_bytes)
-                .ok_or_else(|| RasterError::ImageAsset {
-                    path: canonical.display().to_string(),
-                    reason: "failed to construct RGBA image from DNG".into(),
-                })?
-        } else {
-            image::load_from_memory(&bytes)
-                .map_err(|error| RasterError::ImageAsset {
-                    path: canonical.display().to_string(),
-                    reason: error.to_string(),
-                })?
-                .to_rgba8()
-        };
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"));
+        let decoded = decode_image_bytes(&bytes, &canonical.display().to_string(), is_svg)?;
         let decoded = Arc::new(decoded);
+        let mut cache = self.decoded.lock().expect("image cache lock poisoned");
+        Ok(cache.insert(key, decoded, self.max_bytes))
+    }
+
+    /// Decode and cache image bytes without reading a path.
+    ///
+    /// This is the bytes-based counterpart of [`ImageCache::load_with_policy`]
+    /// and is used by [`crate::scene::SceneNode::ImageBytes`]. The cache key is
+    /// the SHA-256 of the encoded bytes, so equal bytes share one decoded image
+    /// regardless of where they came from.
+    pub(crate) fn load_bytes(
+        &self,
+        bytes: &[u8],
+        source: &str,
+    ) -> Result<Arc<RgbaImage>, RasterError> {
+        if bytes.is_empty() {
+            return Err(RasterError::ImageAsset {
+                path: source.to_string(),
+                reason: "image bytes are empty".into(),
+            });
+        }
+        if bytes.len() > MAX_IMAGE_BYTES {
+            return Err(RasterError::ImageAsset {
+                path: source.to_string(),
+                reason: format!("image bytes exceed the {MAX_IMAGE_BYTES} byte limit"),
+            });
+        }
+        let key = bytes_cache_key(bytes);
+        if let Some(image) = self
+            .decoded
+            .lock()
+            .expect("image cache lock poisoned")
+            .get(&key)
+        {
+            return Ok(image);
+        }
+        let decoded = Arc::new(decode_image_bytes(bytes, source, looks_like_svg(bytes))?);
         let mut cache = self.decoded.lock().expect("image cache lock poisoned");
         Ok(cache.insert(key, decoded, self.max_bytes))
     }
@@ -331,5 +395,26 @@ mod tests {
         let image = cache.load(source).unwrap();
         assert_eq!((image.width(), image.height()), (1, 1));
         assert_eq!(image.get_pixel(0, 0).0, [0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn bytes_cache_decodes_and_reuses_without_a_path() {
+        let bytes = br##"<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="#00ff00"/></svg>"##;
+        let cache = ImageCache::default();
+
+        let first = cache.load_bytes(bytes, "scene:bytes").unwrap();
+        assert_eq!((first.width(), first.height()), (2, 2));
+        assert_eq!(first.get_pixel(1, 1).0, [0, 255, 0, 255]);
+
+        let second = cache.load_bytes(bytes, "scene:bytes").unwrap();
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn bytes_cache_rejects_empty_input() {
+        let cache = ImageCache::default();
+        let error = cache.load_bytes(&[], "scene:bytes").unwrap_err();
+        assert!(error.to_string().contains("empty"));
     }
 }

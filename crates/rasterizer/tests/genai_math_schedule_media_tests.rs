@@ -1,3 +1,5 @@
+#![cfg(feature = "genai")]
+
 //! Comprehensive integration tests for:
 //! - #103 & #111: Generative Media Orchestration (OpenAI Sora, Runway Gen-3, WorldLabs 3D Gaussian Splats,
 //!   Timeline Pre-fetch Scheduler, Distributed GPU Worker Cluster)
