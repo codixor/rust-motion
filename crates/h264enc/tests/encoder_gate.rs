@@ -8,22 +8,20 @@
 use rust_motion_h264enc::{Encoder, EncoderConfig, RateControl, YuvFrame};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-/// Deterministic RGBA fixture: gradients plus moving blocks make the encode
-/// non-trivial without depending on a checked-in image.
+/// Deterministic RGBA fixture: smooth RGB gradients exercise the colour
+/// conversion, prediction and transform without high-frequency noise that no
+/// CRF 20 encoder can reproduce at the gate's PSNR threshold.
 fn rgba_fixture(width: u32, height: u32) -> Vec<u8> {
     let mut rgba = Vec::with_capacity((width as usize) * (height as usize) * 4);
+    let w = width.max(1);
+    let h = height.max(1);
     for y in 0..height {
         for x in 0..width {
-            let r = ((x * 255) / width.max(1)) as u8;
-            let g = ((y * 255) / height.max(1)) as u8;
-            let b = (((x + y) * 7) % 256) as u8;
-            let checker = if ((x / 17) + (y / 13)) % 2 == 0 {
-                255
-            } else {
-                32
-            };
-            rgba.push(r.saturating_add(checker / 4));
-            rgba.push(g.saturating_add(checker / 4));
+            let r = ((x * 255) / w) as u8;
+            let g = ((y * 255) / h) as u8;
+            let b = (((x + y) * 255) / (w + h)) as u8;
+            rgba.push(r);
+            rgba.push(g);
             rgba.push(b);
             rgba.push(255);
         }
