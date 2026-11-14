@@ -221,6 +221,21 @@ fn psnr_parser_reports_unparseable_and_non_finite_output() {
     assert!(non_finite.contains("average:inf"));
 }
 
+fn psnr(source: &[u8], decoded: &[u8]) -> f64 {
+    debug_assert_eq!(source.len(), decoded.len());
+    let mut sum = 0.0f64;
+    for (expected, actual) in source.iter().zip(decoded) {
+        let delta = f64::from(*expected) - f64::from(*actual);
+        sum += delta * delta;
+    }
+    let mse = sum / source.len() as f64;
+    if mse == 0.0 {
+        f64::INFINITY
+    } else {
+        10.0 * (255.0f64 * 255.0 / mse).log10()
+    }
+}
+
 #[test]
 fn encoder_meets_crf20_psnr_gate() -> Result<(), String> {
     let width = 320;
@@ -235,34 +250,18 @@ fn encoder_meets_crf20_psnr_gate() -> Result<(), String> {
 
     let dir = std::env::temp_dir().join(format!("rust-motion-h264-gate-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
-    let source = dir.join("source.i420");
     let encoded = dir.join("encoded.h264");
-    let stats = dir.join("psnr.log");
-    let mut i420 = Vec::with_capacity(y.len() + u.len() + v.len());
-    i420.extend_from_slice(&y);
-    i420.extend_from_slice(&u);
-    i420.extend_from_slice(&v);
-    std::fs::write(&source, &i420).expect("write source");
+    let decoded = dir.join("decoded.i420");
     std::fs::write(&encoded, &bitstream).expect("write bitstream");
 
-    let filter = format!("[0:v][1:v]psnr=stats_file={}", stats.display());
+    // Decode to raw I420 and compare the planes ourselves. An ffmpeg PSNR
+    // filter can silently insert a range/format conversion; the raw bytes are
+    // what the decoder actually produced.
     let output = std::process::Command::new("ffmpeg")
-        .args([
-            "-y",
-            "-v",
-            "error",
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "yuv420p",
-            "-s",
-            &format!("{width}x{height}"),
-            "-i",
-        ])
-        .arg(&source)
-        .arg("-i")
+        .args(["-y", "-v", "error", "-i"])
         .arg(&encoded)
-        .args(["-lavfi", &filter, "-f", "null", "-"])
+        .args(["-f", "rawvideo", "-pix_fmt", "yuv420p"])
+        .arg(&decoded)
         .output()
         .map_err(|error| format!("could not run ffmpeg: {error}"))?;
     if !output.status.success() {
@@ -272,17 +271,35 @@ fn encoder_meets_crf20_psnr_gate() -> Result<(), String> {
         ));
     }
 
-    let stats_text = std::fs::read_to_string(&stats).unwrap_or_default();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let average = match parse_psnr_average(&stdout, &stderr, &stats_text) {
-        Ok(average) => average,
-        Err(diagnostic) => return Err(diagnostic),
-    };
+    let decoded_bytes = std::fs::read(&decoded)
+        .map_err(|error| format!("could not read decoded frames: {error}"))?;
+    let frame_size = y.len() + u.len() + v.len();
+    if frame_size == 0 || decoded_bytes.len() % frame_size != 0 {
+        return Err(format!(
+            "ffmpeg decoded {} bytes, not a multiple of the {frame_size}-byte I420 frame",
+            decoded_bytes.len()
+        ));
+    }
+    let frames = decoded_bytes.len() / frame_size;
+    let mut total = 0.0;
+    let mut samples = 0usize;
+    for frame in 0..frames {
+        let base = frame * frame_size;
+        for (src, offset, len) in [
+            (&y, 0, y.len()),
+            (&u, y.len(), u.len()),
+            (&v, y.len() + u.len(), v.len()),
+        ] {
+            let start = base + offset;
+            total += psnr(src, &decoded_bytes[start..start + len]);
+            samples += 1;
+        }
+    }
+    let average = total / samples as f64;
     assert!(
         average >= 38.0,
-        "CRF 20 PSNR {average:.2} dB is below the 38 dB gate.\n{}",
-        captured_output(&stdout, &stderr, &stats_text)
+        "CRF 20 PSNR {average:.2} dB is below the 38 dB gate.\n\
+         decoded frames: {frames}, frame bytes: {frame_size}"
     );
 
     let _ = std::fs::remove_dir_all(&dir);
