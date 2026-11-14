@@ -1,6 +1,6 @@
 use rust_motion_rasterizer::{
     backend::{FrameConfig, RasterizerBackend},
-    Color, LoopBehavior, Scene, SceneNode, TinySkiaBackend,
+    Color, LoopBehavior, MediaSecurityPolicy, Scene, SceneNode, TinySkiaBackend,
 };
 
 #[test]
@@ -113,7 +113,9 @@ fn test_render_scene_with_lottie() {
     assert_eq!(metadata.frame_rate, 30.0);
     assert_eq!(metadata.duration_in_frames, 60.0);
 
-    let backend = TinySkiaBackend::new();
+    // Sandboxed (the fail-closed default) rejects the temp Lottie file. This
+    // test intentionally reads a host file, so opt into permissive access.
+    let backend = TinySkiaBackend::new_with_policy(MediaSecurityPolicy::Permissive);
     let mut scene = Scene::new();
 
     scene.push(SceneNode::Lottie {

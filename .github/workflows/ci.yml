@@ -63,19 +63,15 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install FFmpeg (Linux)
+      # The general matrix deliberately does not install FFmpeg: every test
+      # that needs it skips loudly, so macOS/Windows stay green without the
+      # slow brew/choco installs. The h264_encoder_gate job installs FFmpeg and
+      # runs the real encoder plus the FFmpeg-dependent integration suites.
+      - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg libssl-dev
-
-      - name: Install FFmpeg (macOS)
-        if: runner.os == 'macOS'
-        run: brew install ffmpeg
-
-      - name: Install FFmpeg (Windows)
-        if: runner.os == 'Windows'
-        run: choco install ffmpeg -y
+          sudo apt-get install -y libssl-dev
 
       - name: Cargo Check Workspace
         run: cargo check --locked --workspace --all-targets --all-features
@@ -150,6 +146,7 @@ jobs:
 
       - name: Install FFmpeg and system dependencies
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y ffmpeg libssl-dev
 
@@ -158,3 +155,13 @@ jobs:
 
       - name: CRF 20 PSNR gate and odd-size panic fuzz
         run: cargo test --locked -p rust-motion-h264enc --test encoder_gate -- --nocapture
+
+      # Keep end-to-end render coverage in the one job that has a real FFmpeg.
+      - name: FFmpeg-dependent integration tests
+        run: |
+          set -euo pipefail
+          cargo test --locked -p rust-motion-cli --test e2e_cli_subprocess
+          cargo test --locked -p rust-motion-cli --test tier3_subsystem_integration
+          cargo test --locked -p rust-motion-cli --test tier4_acceptance_scenario
+          cargo test --locked -p rust-motion-rasterizer --lib render::tests::
+          cargo test --locked -p rust-motion-rasterizer --test lottie_and_emoji_tests

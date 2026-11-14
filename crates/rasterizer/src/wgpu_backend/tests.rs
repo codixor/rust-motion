@@ -2812,12 +2812,8 @@ fn gpu_audio_visualizer_uses_texture_path() {
 
 #[test]
 fn gpu_native_video_stream_delivers_ordered_frames_without_readback() {
-    if std::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .is_err()
-    {
-        println!("FFmpeg unavailable; skipping GPU native video stream test");
+    if !crate::test_support::has_ffmpeg() {
+        eprintln!("SKIP: GPU native video stream test needs FFmpeg");
         return;
     }
     let Ok(gpu) = WgpuBackend::new() else {
@@ -2881,12 +2877,8 @@ fn gpu_native_video_stream_delivers_ordered_frames_without_readback() {
 
 #[test]
 fn gpu_video_frame_uses_decoded_texture_path() {
-    if std::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .is_err()
-    {
-        println!("FFmpeg unavailable; skipping GPU video test");
+    if !crate::test_support::has_ffmpeg() {
+        eprintln!("SKIP: GPU video test needs FFmpeg");
         return;
     }
     let Ok(gpu) = WgpuBackend::new() else {
@@ -3004,12 +2996,8 @@ fn gpu_video_frame_uses_decoded_texture_path() {
 
 #[test]
 fn gpu_video_fits_match_cpu_for_all_modes() {
-    if std::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .is_err()
-    {
-        println!("FFmpeg unavailable; skipping GPU video fit test");
+    if !crate::test_support::has_ffmpeg() {
+        eprintln!("SKIP: GPU video fit test needs FFmpeg");
         return;
     }
     let Ok(gpu) = WgpuBackend::new() else {
@@ -3087,12 +3075,8 @@ fn gpu_video_fits_match_cpu_for_all_modes() {
 
 #[test]
 fn gpu_video_rotation_matches_cpu_display_orientation() {
-    if std::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .is_err()
-    {
-        println!("FFmpeg unavailable; skipping GPU video rotation test");
+    if !crate::test_support::has_ffmpeg() {
+        eprintln!("SKIP: GPU video rotation test needs FFmpeg");
         return;
     }
     let Ok(gpu) = WgpuBackend::new() else {
@@ -3163,12 +3147,8 @@ fn gpu_video_rotation_matches_cpu_display_orientation() {
 
 #[test]
 fn gpu_vfr_video_rotation_matches_cpu_across_timeline() {
-    if std::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .is_err()
-    {
-        println!("FFmpeg unavailable; skipping GPU VFR rotation test");
+    if !crate::test_support::has_ffmpeg() {
+        eprintln!("SKIP: GPU VFR rotation test needs FFmpeg");
         return;
     }
     let Ok(gpu) = WgpuBackend::new() else {

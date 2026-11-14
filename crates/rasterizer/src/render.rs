@@ -1742,12 +1742,7 @@ mod tests {
     }
 
     fn ffmpeg_available() -> bool {
-        Command::new("ffmpeg")
-            .arg("-version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success())
+        crate::test_support::has_ffmpeg()
     }
 
     fn solid_scene(color: Color) -> impl Fn(u32) -> Scene + Send + Sync {
@@ -1791,6 +1786,7 @@ mod tests {
     #[test]
     fn browser_runtime_pipe_uses_sequential_frames_and_reports_both_progresses() {
         if !ffmpeg_available() {
+            eprintln!("SKIP: browser-runtime pipe test needs FFmpeg");
             return;
         }
         let temp = unique_temp_dir("browser_runtime_pipe");
@@ -2488,6 +2484,10 @@ mod tests {
 
     #[test]
     fn test_cancelled_and_timed_out_render_stop_before_ffmpeg() {
+        if !ffmpeg_available() {
+            eprintln!("SKIP: cancellation-before-ffmpeg test needs FFmpeg");
+            return;
+        }
         let temp = unique_temp_dir("control");
         std::fs::create_dir_all(&temp).unwrap();
         let cancelled_output = temp.join("cancelled.mp4");
@@ -2559,6 +2559,10 @@ mod tests {
 
     #[test]
     fn failed_render_preserves_existing_output() {
+        if !ffmpeg_available() {
+            eprintln!("SKIP: failed-render output test needs FFmpeg");
+            return;
+        }
         let temp = unique_temp_dir("preserve_output");
         std::fs::create_dir_all(&temp).unwrap();
         let output = temp.join("existing.mp4");

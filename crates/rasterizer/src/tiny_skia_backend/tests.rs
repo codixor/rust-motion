@@ -618,12 +618,8 @@ fn missing_image_returns_an_asset_error() {
 
 #[test]
 fn video_frame_is_decoded_and_cached() {
-    if std::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .is_err()
-    {
-        eprintln!("skipping video decode test: FFmpeg is unavailable");
+    if !crate::test_support::has_ffmpeg() {
+        eprintln!("SKIP: video decode test needs FFmpeg");
         return;
     }
 

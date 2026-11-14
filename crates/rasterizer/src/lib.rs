@@ -62,6 +62,8 @@ pub mod scene3d;
 pub mod security;
 pub mod shader;
 pub mod slideshow;
+#[cfg(test)]
+mod test_support;
 pub(crate) mod text_atlas;
 pub mod text_layout;
 pub mod time_remap;

@@ -8,6 +8,15 @@ use rust_motion_rasterizer::{
 };
 use rust_motion_renderer::{encode_frames, spawn_server, EncodeConfig};
 use std::fs;
+use std::process::Command;
+
+fn ffmpeg_available() -> bool {
+    Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
 
 #[tokio::test]
 async fn test_subsystem_http_server_lifecycle() {
@@ -109,6 +118,10 @@ async fn test_subsystem_native_rasterizer_frame_capture() {
 
 #[tokio::test]
 async fn test_subsystem_ffmpeg_mp4_encoding() {
+    if !ffmpeg_available() {
+        eprintln!("SKIP: tier3 FFmpeg MP4 encoding needs FFmpeg");
+        return;
+    }
     let temp_dir = std::env::temp_dir().join(format!(
         "rust_motion_tier3_ffmpeg_{}",
         std::time::SystemTime::now()

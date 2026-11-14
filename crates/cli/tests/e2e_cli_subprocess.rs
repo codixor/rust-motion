@@ -40,6 +40,15 @@ fn tmp_dir(label: &str) -> PathBuf {
     dir
 }
 
+/// Returns `true` if `ffmpeg` is available on `$PATH`.
+fn ffmpeg_available() -> bool {
+    Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Returns `true` if `ffprobe` is available on `$PATH`.
 fn ffprobe_available() -> bool {
     Command::new("ffprobe")
@@ -55,6 +64,10 @@ fn ffprobe_available() -> bool {
 /// Asserts exit code 0 and valid `ftyp` MP4 container header.
 #[test]
 fn e2e_hello_world_mp4() {
+    if !ffmpeg_available() {
+        eprintln!("SKIP: e2e_hello_world_mp4 needs FFmpeg");
+        return;
+    }
     let dir = tmp_dir("hello_world_mp4");
     let output = dir.join("out.mp4");
 
@@ -107,6 +120,10 @@ fn e2e_hello_world_mp4() {
 /// Asserts exit code 0 and valid `GIF89a` magic header.
 #[test]
 fn e2e_gif_output() {
+    if !ffmpeg_available() {
+        eprintln!("SKIP: e2e_gif_output needs FFmpeg");
+        return;
+    }
     let dir = tmp_dir("gif_output");
     let output = dir.join("out.gif");
 

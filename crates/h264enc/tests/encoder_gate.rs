@@ -118,21 +118,121 @@ fn encode_fixture(
     Ok((bitstream, y, u, v))
 }
 
+fn has_ffmpeg() -> bool {
+    std::process::Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+/// Extracts a numeric metric value from one whitespace-delimited token.
+///
+/// FFmpeg writes the PSNR summary as either a plain log line
+/// (`... average:40.75 min:...`) or a filter-prefixed line
+/// (`[Parsed_psnr_0 @ ...] ... average:40.75`). Both put the value in the same
+/// `average:VALUE` token, so the parser only needs to trim trailing
+/// punctuation such as a comma or closing bracket.
+fn metric_value(token: &str, key: &str) -> Option<f64> {
+    let value = token.strip_prefix(key)?;
+    let value = value.trim_end_matches(|character: char| {
+        character.is_ascii_punctuation() && !matches!(character, '.' | '-' | '+')
+    });
+    value.parse::<f64>().ok()
+}
+
+fn metric_values(text: &str, key: &str) -> Vec<f64> {
+    text.split_whitespace()
+        .filter_map(|token| metric_value(token, key))
+        .collect()
+}
+
+fn snippet(text: &str) -> String {
+    let mut output: String = text.chars().take(4000).collect();
+    if text.chars().count() > 4000 {
+        output.push_str("\n...[truncated]");
+    }
+    output
+}
+
+fn captured_output(stdout: &str, stderr: &str, stats: &str) -> String {
+    format!(
+        "ffmpeg stdout:\n{}\nffmpeg stderr:\n{}\npsnr stats:\n{}",
+        snippet(stdout),
+        snippet(stderr),
+        snippet(stats)
+    )
+}
+
+/// Parses the PSNR average from FFmpeg stdout/stderr, then falls back to the
+/// stats file. The stats-file format is one line per frame with
+/// `psnr_avg:VALUE`; its arithmetic mean is the same summary average for a
+/// constant frame count. Inf/NaN are reported as test failures, never accepted.
+fn parse_psnr_average(stdout: &str, stderr: &str, stats: &str) -> Result<f64, String> {
+    for (label, text) in [("stderr", stderr), ("stdout", stdout), ("stats", stats)] {
+        if let Some(value) = metric_values(text, "average:").last().copied() {
+            if value.is_finite() {
+                return Ok(value);
+            }
+            return Err(format!(
+                "ffmpeg reported a non-finite PSNR average ({value}) in {label}.\n{}",
+                captured_output(stdout, stderr, stats)
+            ));
+        }
+    }
+
+    let per_frame = metric_values(stats, "psnr_avg:");
+    if per_frame.is_empty() {
+        return Err(format!(
+            "could not parse an FFmpeg PSNR average from stdout, stderr or the stats file.\n{}",
+            captured_output(stdout, stderr, stats)
+        ));
+    }
+    if let Some(value) = per_frame.iter().find(|value| !value.is_finite()) {
+        return Err(format!(
+            "ffmpeg reported a non-finite per-frame PSNR ({value}) in the stats file.\n{}",
+            captured_output(stdout, stderr, stats)
+        ));
+    }
+    let mean = per_frame.iter().sum::<f64>() / per_frame.len() as f64;
+    Ok(mean)
+}
+
 #[test]
-fn encoder_meets_crf20_psnr_gate() {
+fn psnr_parser_handles_log_and_filter_formats() {
+    let log = "PSNR y:40.10 u:41.00 v:40.90 average:40.75 min:39.80 max:42.00";
+    assert_eq!(parse_psnr_average("", log, ""), Ok(40.75));
+
+    let filter =
+        "[Parsed_psnr_0 @ 0x1234] PSNR y:40.10 u:41.00 v:40.90 average:41.25 min:39.80 max:42.00";
+    assert_eq!(parse_psnr_average(filter, "", ""), Ok(41.25));
+
+    let stats = "n:1 mse_avg:1.00 psnr_avg:40.0 mse_y:1.0 mse_u:1.0 mse_v:1.0\n                 n:2 mse_avg:2.00 psnr_avg:42.0 mse_y:2.0 mse_u:2.0 mse_v:2.0";
+    assert_eq!(parse_psnr_average("", "", stats), Ok(41.0));
+}
+
+#[test]
+fn psnr_parser_reports_unparseable_and_non_finite_output() {
+    let unparseable = parse_psnr_average("no psnr here", "still no psnr", "n:1 mse_avg:1.0")
+        .expect_err("missing average must be an error");
+    assert!(unparseable.contains("could not parse"));
+
+    let non_finite = parse_psnr_average("", "PSNR average:inf min:0 max:0", "")
+        .expect_err("inf must fail the gate");
+    assert!(non_finite.contains("non-finite"));
+    assert!(non_finite.contains("average:inf"));
+}
+
+#[test]
+fn encoder_meets_crf20_psnr_gate() -> Result<(), String> {
     let width = 320;
     let height = 180;
     let (bitstream, y, u, v) =
         encode_fixture(width, height, 4).expect("CRF 20 fixture must encode");
 
-    let ffmpeg = std::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .ok()
-        .filter(|output| output.status.success());
-    if ffmpeg.is_none() {
-        eprintln!("SKIP: ffmpeg is not installed; CI installs it and runs this gate");
-        return;
+    if !has_ffmpeg() {
+        eprintln!("SKIP: ffmpeg is not installed; the dedicated CI gate installs it");
+        return Ok(());
     }
 
     let dir = std::env::temp_dir().join(format!("rust-motion-h264-gate-{}", std::process::id()));
@@ -166,26 +266,29 @@ fn encoder_meets_crf20_psnr_gate() {
         .arg(&encoded)
         .args(["-lavfi", &filter, "-f", "null", "-"])
         .output()
-        .expect("run ffmpeg");
-    assert!(
-        output.status.success(),
-        "ffmpeg failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+        .map_err(|error| format!("could not run ffmpeg: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "ffmpeg failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
 
-    let log = std::fs::read_to_string(&stats).expect("psnr stats file");
-    let average = log
-        .lines()
-        .find_map(|line| line.split("average:").nth(1))
-        .and_then(|value| value.split_whitespace().next())
-        .and_then(|value| value.parse::<f64>().ok())
-        .expect("ffmpeg psnr average");
+    let stats_text = std::fs::read_to_string(&stats).unwrap_or_default();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let average = match parse_psnr_average(&stdout, &stderr, &stats_text) {
+        Ok(average) => average,
+        Err(diagnostic) => return Err(diagnostic),
+    };
     assert!(
         average >= 38.0,
-        "CRF 20 PSNR {average:.2} dB is below the 38 dB gate"
+        "CRF 20 PSNR {average:.2} dB is below the 38 dB gate.\n{}",
+        captured_output(&stdout, &stderr, &stats_text)
     );
 
     let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
 }
 
 #[test]

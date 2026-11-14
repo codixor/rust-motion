@@ -30,12 +30,20 @@ fn test_cli_doctor_json_output() {
         .output()
         .expect("doctor command executes");
 
-    assert!(output.status.success(), "doctor command should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let val: serde_json::Value =
         serde_json::from_str(&stdout).expect("doctor output must be valid JSON");
 
-    assert!(val.get("ok").is_some());
+    // Doctor's exit code reflects tool availability. The general test matrix
+    // deliberately does not install FFmpeg, so accept a clean `ok: false`
+    // report but require the exit status and JSON verdict to agree.
+    assert_eq!(
+        val["ok"]
+            .as_bool()
+            .expect("doctor must report an ok boolean"),
+        output.status.success(),
+        "doctor exit status must agree with its ok verdict"
+    );
     assert!(val.get("ffmpeg").is_some());
     assert!(val["ffmpeg"]["available"].is_boolean());
     assert!(val.get("temp_dir").is_some());
@@ -51,11 +59,16 @@ fn test_cli_doctor_env_json() {
         .output()
         .expect("doctor command executes");
 
-    assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     let val: serde_json::Value =
         serde_json::from_str(&stdout).expect("RUST_MOTION_JSON=1 must output valid JSON");
-    assert!(val.get("ok").is_some());
+    assert_eq!(
+        val["ok"]
+            .as_bool()
+            .expect("doctor must report an ok boolean"),
+        output.status.success(),
+        "RUST_MOTION_JSON doctor exit status must agree with its ok verdict"
+    );
 }
 
 #[test]

@@ -715,10 +715,8 @@ mod tests {
 
     #[test]
     fn variable_frame_rate_input_is_sampled_on_the_output_timeline() {
-        if Command::new("ffmpeg").arg("-version").output().is_err()
-            || Command::new("ffprobe").arg("-version").output().is_err()
-        {
-            eprintln!("skipping VFR decode test: FFmpeg or FFprobe is unavailable");
+        if !crate::test_support::has_ffmpeg() || !crate::test_support::has_ffprobe() {
+            eprintln!("SKIP: VFR decode test needs FFmpeg and FFprobe");
             return;
         }
 
@@ -762,10 +760,8 @@ mod tests {
 
     #[test]
     fn rotated_video_reports_and_decodes_display_dimensions() {
-        if Command::new("ffmpeg").arg("-version").output().is_err()
-            || Command::new("ffprobe").arg("-version").output().is_err()
-        {
-            eprintln!("skipping rotation test: FFmpeg or FFprobe is unavailable");
+        if !crate::test_support::has_ffmpeg() || !crate::test_support::has_ffprobe() {
+            eprintln!("SKIP: rotation test needs FFmpeg and FFprobe");
             return;
         }
 
@@ -840,10 +836,8 @@ mod tests {
 
     #[test]
     fn variable_frame_rate_display_rotation_preserves_orientation() {
-        if Command::new("ffmpeg").arg("-version").output().is_err()
-            || Command::new("ffprobe").arg("-version").output().is_err()
-        {
-            eprintln!("skipping VFR rotation test: FFmpeg or FFprobe is unavailable");
+        if !crate::test_support::has_ffmpeg() || !crate::test_support::has_ffprobe() {
+            eprintln!("SKIP: VFR rotation test needs FFmpeg and FFprobe");
             return;
         }
 

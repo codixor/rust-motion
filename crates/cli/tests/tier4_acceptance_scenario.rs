@@ -5,9 +5,22 @@
 
 use rust_motion_cli::{execute_render_command, RenderBackend, RenderRequest};
 use std::fs;
+use std::process::Command;
+
+fn ffmpeg_available() -> bool {
+    Command::new("ffmpeg")
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
 
 #[tokio::test]
 async fn test_tier4_real_world_acceptance_scenario() {
+    if !ffmpeg_available() {
+        eprintln!("SKIP: tier4 acceptance render needs FFmpeg");
+        return;
+    }
     let temp_dir = std::env::temp_dir().join(format!(
         "rust_motion_tier4_acceptance_{}",
         std::time::SystemTime::now()
