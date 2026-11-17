@@ -43,10 +43,12 @@ fn offscreen_layer_pool_reuses_resolution_slots() {
     let submission = backend
         .composite_external_texture(&slot, &destination, 64, 32, 0.5)
         .expect("offscreen composite submission failed");
-    backend.ctx.device.poll(wgpu::PollType::Wait {
+    if let Err(poll_error) = backend.ctx.device.poll(wgpu::PollType::Wait {
         submission_index: Some(submission),
         timeout: None,
-    });
+    }) {
+        tracing::warn!("GPU device poll failed: {poll_error}");
+    }
 }
 
 #[test]
