@@ -97,8 +97,9 @@ pub(crate) fn least_squares<const N: usize>(samples: &[([f64; N], f64)]) -> Opti
         for row in 0..N {
             if row != col {
                 let f = a[row][col] / a[col][col];
-                for k in col..N {
-                    a[row][k] -= f * a[col][k];
+                let a_col = a[col];
+                for (k, &a_col_k) in a_col.iter().enumerate().skip(col) {
+                    a[row][k] -= f * a_col_k;
                 }
                 b[row] -= f * b[col];
             }
