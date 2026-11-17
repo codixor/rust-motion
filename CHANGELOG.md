@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Text stack migrated off unmaintained dependencies: shaping now uses `harfrust` (pure-Rust HarfBuzz port) and rasterization uses `skrifa`/`read-fonts` outlines drawn through the standalone `ab_glyph_rasterizer` coverage algorithm. This removes `rustybuzz`, `ab_glyph`, `owned_ttf_parser` and `ttf-parser` from the dependency graph while keeping rendered text byte-identical (golden fixtures).
+- `image` now builds with `default-features = false` and exactly `["rayon", "png", "jpeg", "webp", "gif"]`. AVIF and EXR decoding are intentionally removed (previously provided by `ravif`/`rav1e`/`paste` and `exr`/`pulp`): scenes referencing AVIF or EXR image files must be re-encoded as PNG/JPEG/WebP/GIF, or re-implemented downstream.
+- `tokio` updated to 1.53.3 (RUSTSEC-2026-0386 remediation).
+
+### Breaking changes
+
+- `rust-motion-rasterizer` public helpers `measure_text_width_with_font`, `fill_text_box`, `fit_text_on_n_lines` and `create_rounded_text_box` no longer accept a generic `F: ab_glyph::Font`; they take the new `RasterFont` value type. This is inherent to the `ab_glyph`/ttf-parser removal (an unmaintained dependency could not remain in the public API).
+
+
 ## 1.0.0 - 2026-10-13
 
 ### Added

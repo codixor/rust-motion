@@ -205,6 +205,9 @@ impl BitOut {
 }
 
 /// Encode `samples` (`width` × `height` × `comps`, interleaved) as lossless JPEG.
+// Pre-existing argument count; refactoring the public lossless-JPEG encoder
+// signature would break the dng crate API, so the lint is allowed here.
+#[allow(clippy::too_many_arguments)]
 pub fn lj92(
     samples: &[u16],
     width: usize,
@@ -226,8 +229,8 @@ pub fn lj92(
         let first_line =
             restart_lines == 0 && y == 0 || restart_lines != 0 && y % restart_lines == 0;
         for x in 0..width {
-            for c in 0..comps {
-                let i = y * row + x * comps + c;
+            let base_i = y * row + x * comps;
+            for (c, i) in (base_i..base_i + comps).enumerate() {
                 let px = if first_line && x == 0 {
                     initial
                 } else if first_line {

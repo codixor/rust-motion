@@ -389,6 +389,9 @@ pub fn decode(data: &[u8], max_samples: usize) -> Result<Decoded> {
 }
 
 /// Decode the entropy-coded data of one scan (H.1.2).
+// Pre-existing argument count; refactoring the lossless-JPEG scan signature is
+// out of scope for this change.
+#[allow(clippy::too_many_arguments)]
 fn scan(
     data: &[u8],
     start: usize,

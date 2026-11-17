@@ -83,7 +83,7 @@ base64            = "0.22"
 urlencoding       = "2.1"
 
 # Image / rasterizer
-image             = "0.25"
+image             = { version = "0.25", default-features = false, features = ["rayon", "png", "jpeg", "webp", "gif"] }
 tiny-skia         = "0.11"
 resvg             = { version = "0.45", default-features = false }
 ab_glyph_rasterizer = "0.1"
