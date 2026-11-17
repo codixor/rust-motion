@@ -669,7 +669,10 @@ fn video_frame_is_decoded_and_cached() {
             time_remap: None,
         }],
     };
-    let backend = TinySkiaBackend::headless();
+    let backend =
+        TinySkiaBackend::headless_with_policy(crate::security::MediaSecurityPolicy::sandboxed([
+            &dir,
+        ]));
     let config = FrameConfig::new(16, 16, 0, 2.0);
     let first = backend.render_frame(&scene, &config).unwrap();
     let mut next_scene = scene.clone();
@@ -729,7 +732,11 @@ fn video_frame_is_decoded_and_cached() {
     backend.render_frame(&eof_scene, &config).unwrap();
     assert_eq!(backend.videos.decoder_count(), 1);
 
-    let metadata = crate::probe_video_metadata(source.to_str().unwrap()).unwrap();
+    let metadata = crate::probe_video_metadata_with_policy(
+        source.to_str().unwrap(),
+        &crate::security::MediaSecurityPolicy::sandboxed([&dir]),
+    )
+    .unwrap();
     assert_eq!((metadata.width, metadata.height), (16, 16));
     assert_eq!((metadata.display_width, metadata.display_height), (16, 16));
     assert_eq!(metadata.fps, Some(2.0));

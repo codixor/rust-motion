@@ -523,8 +523,11 @@ mod tests {
         assert!((average_fps - nominal_fps).abs() > 0.01);
 
         let media = get_video_metadata(&source).unwrap();
-        let rasterizer =
-            rust_motion_rasterizer::probe_video_metadata(source.to_str().unwrap()).unwrap();
+        let rasterizer = rust_motion_rasterizer::probe_video_metadata_with_policy(
+            source.to_str().unwrap(),
+            &rust_motion_rasterizer::MediaSecurityPolicy::sandboxed([&directory]),
+        )
+        .unwrap();
         let rasterizer_fps = rasterizer.fps.unwrap();
         assert!((media.fps - average_fps).abs() < 1e-6);
         assert!((media.fps - rasterizer_fps).abs() < 1e-6);

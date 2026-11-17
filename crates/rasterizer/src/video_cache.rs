@@ -478,6 +478,20 @@ pub fn probe_video_metadata(src: &str) -> Result<VideoMetadata, RasterError> {
     probe_path(&path)
 }
 
+/// Probe a local video with FFprobe under an explicit security policy.
+///
+/// The plain probe uses the fail-closed default sandbox; callers that own
+/// the media root (e.g. tests writing into a temp dir) can pass
+/// MediaSecurityPolicy::sandboxed scoped to that root instead of opting
+/// into a global permissive policy.
+pub fn probe_video_metadata_with_policy(
+    src: &str,
+    policy: &crate::security::MediaSecurityPolicy,
+) -> Result<VideoMetadata, RasterError> {
+    let path = canonical_local_path_with_policy(src, policy)?;
+    probe_path(&path)
+}
+
 pub(crate) fn canonical_local_path(src: &str) -> Result<PathBuf, RasterError> {
     canonical_local_path_with_policy(src, &crate::security::MediaSecurityPolicy::default())
 }
@@ -747,9 +761,10 @@ mod tests {
         assert!(generated.success());
 
         let cache = VideoFrameCache::default();
+        let policy = crate::security::MediaSecurityPolicy::sandboxed([&dir]);
         for time in [0.0, 0.2, 0.4, 0.6, 0.8] {
             let frame = cache
-                .load(source.to_str().unwrap(), time, 5.0, false)
+                .load_with_policy(source.to_str().unwrap(), time, 5.0, false, &policy)
                 .unwrap();
             assert_eq!(frame.dimensions(), (16, 16));
         }
@@ -874,9 +889,10 @@ mod tests {
         assert!(generated.success());
 
         let cache = VideoFrameCache::default();
+        let policy = crate::security::MediaSecurityPolicy::sandboxed([&dir]);
         for time in [0.0, 0.2, 0.4, 0.6, 0.8] {
             let frame = cache
-                .load(source.to_str().unwrap(), time, 5.0, false)
+                .load_with_policy(source.to_str().unwrap(), time, 5.0, false, &policy)
                 .unwrap();
             assert_eq!(frame.dimensions(), (8, 16));
         }

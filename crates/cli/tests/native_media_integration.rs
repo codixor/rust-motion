@@ -1,5 +1,6 @@
 use rust_motion_rasterizer::{
-    render_to_ffmpeg_pipe, AudioTrack, ImageFit, PipeConfig, Scene, SceneNode, TinySkiaBackend,
+    render_to_ffmpeg_pipe, AudioTrack, ImageFit, MediaSecurityPolicy, PipeConfig, Scene, SceneNode,
+    TinySkiaBackend,
 };
 use std::fs;
 use std::process::Command;
@@ -63,9 +64,12 @@ fn native_video_frames_and_audio_are_encoded_together() {
     audio.duration = Some(0.2);
     let config = PipeConfig::new(64, 64, 5.0, 5, &output)
         .with_concurrency(2)
+        .with_security_policy(MediaSecurityPolicy::sandboxed([&temp_dir]))
         .with_audio_tracks([audio]);
     let source_for_frames = source.display().to_string();
-    render_to_ffmpeg_pipe(&TinySkiaBackend::headless(), &config, move |frame| Scene {
+    let backend =
+        TinySkiaBackend::headless_with_policy(MediaSecurityPolicy::sandboxed([&temp_dir]));
+    render_to_ffmpeg_pipe(&backend, &config, move |frame| Scene {
         nodes: vec![SceneNode::Video {
             src: source_for_frames.clone(),
             time: frame as f64 / 5.0,
@@ -211,7 +215,7 @@ async fn rhai_media_nodes_flow_through_the_cli_renderer() {
         crf: 18,
         preset: "fast".into(),
         hw_accel: rust_motion_rasterizer::HwAccel::Disabled,
-        sandbox_roots: Vec::new(),
+        sandbox_roots: vec![temp_dir.clone()],
         permissive: false,
     })
     .await

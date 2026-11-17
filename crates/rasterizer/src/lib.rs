@@ -161,7 +161,7 @@ pub use text_layout::{
 };
 pub use time_remap::{FrameInterpolationMode, OpticalFlowEngine, TimeRemapCurve, TimeRemapPoint};
 pub use tiny_skia_backend::TinySkiaBackend;
-pub use video_cache::{probe_video_metadata, VideoMetadata};
+pub use video_cache::{probe_video_metadata, probe_video_metadata_with_policy, VideoMetadata};
 #[cfg(feature = "gpu")]
 pub use wgpu_backend::{
     CacheTelemetry, FrameProfileSample, ProfilingSummary, StageSummary, WgpuBackend,

@@ -154,7 +154,7 @@ impl TinySkiaBackend {
             target_w,
             target_h,
             loop_behavior,
-            &crate::security::MediaSecurityPolicy::default(),
+            &self.security,
         )
     }
 
@@ -167,7 +167,7 @@ impl TinySkiaBackend {
     ) -> Result<Option<(usize, Arc<image::RgbaImage>)>, RasterError> {
         let frames = self
             .gifs
-            .load_frames_with_policy(src, &crate::security::MediaSecurityPolicy::default())?;
+            .load_frames_with_policy(src, &self.security)?;
         Ok(crate::gif_cache::GifFrameCache::frame_index_at_time_ms(
             &frames,
             time_secs * 1000.0,
