@@ -2291,7 +2291,7 @@ mod tests {
         let space = gid(' ').expect("space mapped");
         cases.push((space, 24.0, (0.0, 0.0)));
 
-        let mut actual = String::new();
+        let mut actual = String::from("# noto\n");
         for (g, size, pos) in &cases {
             let repr = match crate::glyf_outline::GlyfOutline::new(
                 &font,
@@ -2304,6 +2304,30 @@ mod tests {
                 Some(o) => format!("{g}@{size}x{pos:?}\n{}", o.dump_repr()),
             };
             actual.push_str(&repr);
+        }
+
+        // Matched-point composite quirk (ARGS_ARE_XY_VALUES = 0 with a 2x2
+        // transform): ttf-parser/ab_glyph read the four F2DOT14 values two
+        // bytes early because the two matched-point argument bytes are not
+        // consumed — replicated exactly by glyf_outline.rs. Fixture is
+        // generated from scratch by tests/fixtures/glyf_test_fonts_gen.py
+        // (fontTools, MIT).
+        const QUIRK_FONT: &[u8] = include_bytes!("../tests/fixtures/glyf_quirk_test.ttf");
+        let quirk = read_fonts::FontRef::new(QUIRK_FONT).expect("quirk font valid");
+        let qhhea = quirk.hhea().expect("quirk font has hhea");
+        let quirk_height =
+            f32::from(qhhea.ascender().to_i16()) - f32::from(qhhea.descender().to_i16());
+        actual.push_str("# quirk\n");
+        for g in [0u16, 1, 2] {
+            for (size, pos) in [(24.0, (0.0, 0.0)), (32.0, (12.5, -3.25))] {
+                let repr =
+                    match crate::glyf_outline::GlyfOutline::new(&quirk, g, size, quirk_height, pos)
+                    {
+                        None => format!("{g}@{size}x{pos:?}\nNone\n"),
+                        Some(o) => format!("{g}@{size}x{pos:?}\n{}", o.dump_repr()),
+                    };
+                actual.push_str(&repr);
+            }
         }
 
         let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -2321,3 +2345,4 @@ mod tests {
         }
     }
 }
+

@@ -17,6 +17,10 @@
 use ab_glyph_rasterizer::{point, Rasterizer};
 use read_fonts::{FontRef, TableProvider};
 
+/// Maximum composite nesting depth. Mirrors ttf-parser's `MAX_COMPONENTS = 32`
+/// exactly (ab_glyph inherits it), so pathological recursive composites are
+/// rejected identically to the reference path. Intentional deviation from
+/// read-fonts, which imposes no such cap.
 const MAX_COMPONENTS: u8 = 32;
 
 // Bounds-checked primitive readers.
@@ -555,15 +559,9 @@ fn glyph_bytes<'a>(font: &FontRef<'a>, gid: u16) -> Option<&'a [u8]> {
 /// `ab_glyph::FontVec::outline` (y-flip and empty-bbox filter included).
 fn outline(font: &FontRef, glyph_id: u16) -> Option<Outline> {
     let glyph_data = glyph_bytes(font, glyph_id)?;
-    if std::env::var("GLYF_DEBUG").is_ok() {
-        eprintln!("gid {glyph_id} glyph_data len {}", glyph_data.len());
-    }
     let mut curve_builder = OutlineCurveBuilder::default();
     let mut builder = Builder::new(Transform::default(), RectF::new(), &mut curve_builder);
     let rect = outline_impl(font, glyph_data, 0, &mut builder)??;
-    if std::env::var("GLYF_DEBUG").is_ok() {
-        eprintln!("gid {glyph_id} rect {:?}", rect);
-    }
     let curves = curve_builder.take_outline();
     // ab_glyph filters the UNFLIPPED ttf-parser rect before the y-flip.
     if rect.0 >= rect.2 || rect.1 >= rect.3 {
@@ -672,6 +670,11 @@ impl GlyfOutline {
         height_unscaled: f32,
         position: (f32, f32),
     ) -> Option<Self> {
+        // Guard against malformed fonts whose hhea ascender equals the
+        // descender: a zero divisor would produce infinite scale factors.
+        if !(height_unscaled > 0.0) {
+            return None;
+        }
         let outline = outline(font, glyph_id)?;
         let scale_factor = PxScaleFactor {
             horizontal: font_size / height_unscaled,
@@ -697,7 +700,8 @@ impl GlyfOutline {
     }
     /// Deterministic outline dump used by the golden differential tests
     /// (fixtures captured from the ab_glyph 0.2.32 reference path).
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// Test-only: compiled out of production builds.
+    #[cfg(test)]
     pub(crate) fn dump_repr(&self) -> String {
         let (x_min, y_min, x_max, y_max) = self.outline.bounds;
         let mut s = format!(
@@ -736,5 +740,19 @@ ncurves {}
             min_x, min_y, max_x, max_y
         ));
         s
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BUNDLED_FONT: &[u8] = include_bytes!("../assets/fonts/NotoSans-Regular.ttf");
+
+    #[test]
+    fn zero_height_returns_none() {
+        let font = FontRef::new(BUNDLED_FONT).expect("bundled font valid");
+        assert!(GlyfOutline::new(&font, 43, 24.0, 0.0, (0.0, 0.0)).is_none());
+        assert!(GlyfOutline::new(&font, 43, 24.0, -1.0, (0.0, 0.0)).is_none());
     }
 }
