@@ -41,6 +41,7 @@ pub mod frame_cache;
 pub mod genai_orchestrator;
 pub mod gif_cache;
 pub mod gltf;
+mod glyf_outline;
 pub mod hdr_merge;
 mod image_cache;
 pub mod lens_correction;
@@ -120,9 +121,9 @@ pub use backend::{
 pub use font::{
     create_rounded_text_box, create_rounded_text_box_from_measurements, fill_text_box, fit_text,
     fit_text_on_n_lines, layout_text_box, measure_text_width, measure_text_width_with_font,
-    FitTextOnNLinesOptions, FontCache, LayoutError, PositionedTextLine, RoundedTextBoxOptions,
-    TextAlign, TextBox, TextBoxLayout, TextFitResult, TextHorizontalAlign, TextLineDimension,
-    TextOverflow, TextVerticalAlign,
+    FitTextOnNLinesOptions, FontCache, LayoutError, PositionedTextLine, RasterFont,
+    RoundedTextBoxOptions, TextAlign, TextBox, TextBoxLayout, TextFitResult, TextHorizontalAlign,
+    TextLineDimension, TextOverflow, TextVerticalAlign,
 };
 pub use frame_cache::{
     CacheMetrics, CachedFrame, FrameCacheConfig, FrameCacheKey, FrameCacheManager,

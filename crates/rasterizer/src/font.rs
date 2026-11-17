@@ -17,8 +17,9 @@
 const BUNDLED_FONT: &[u8] = include_bytes!("../assets/fonts/NotoSans-Regular.ttf");
 
 use crate::backend::RasterError;
+use crate::glyf_outline::GlyfOutline;
 use crate::text_atlas::{AtlasEntry, TextAtlas, TextAtlasSnapshot};
-use ab_glyph::{Font, FontVec, PxScale, ScaleFont};
+use read_fonts::{FontRef, TableProvider};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -243,14 +244,77 @@ struct TextRasterKey {
     sources: Vec<String>,
 }
 
+/// Shared line-metric replication of `ab_glyph::ScaleFont` arithmetic
+/// (bit-for-bit: hhea ascender/descender/line_gap scaled by
+/// `font_size / (ascender - descender)`).
+fn line_metrics_of(font: &skrifa::Font, font_size: f32) -> (f32, f32, f32) {
+    if let Some(line) = font.metrics().hhea_line {
+        let ascent_unscaled = line.ascender.to_f32();
+        let descent_unscaled = line.descender.to_f32();
+        let line_gap_unscaled = line.line_gap.to_f32();
+        let vertical_scale = font_size / (ascent_unscaled - descent_unscaled);
+        (
+            vertical_scale * ascent_unscaled,
+            vertical_scale * descent_unscaled,
+            vertical_scale * line_gap_unscaled,
+        )
+    } else {
+        (0.0, 0.0, 0.0)
+    }
+}
+
+/// hhea em-box height in font units (ascender − descender).
+fn height_unscaled_of(font: &skrifa::Font) -> f32 {
+    if let Some(line) = font.metrics().hhea_line {
+        line.ascender.to_f32() - line.descender.to_f32()
+    } else {
+        0.0
+    }
+}
+
+/// Legacy `kern`-table kerning in font units: first horizontal subtable that
+/// yields a value wins (ttf-parser `glyphs_hor_kerning` semantics).
+fn legacy_kern_units(font: &FontRef, first: u16, second: u16) -> f32 {
+    let Ok(kern) = font.kern() else {
+        return 0.0;
+    };
+    for subtable in kern.subtables() {
+        let Ok(st) = subtable else {
+            continue;
+        };
+        if st.is_horizontal() {
+            let value = match st {
+                read_fonts::tables::kern::Subtable::Ot(st) => {
+                    use read_fonts::{FontData, FontRead};
+                    read_fonts::tables::kern::Subtable0::read(FontData::new(st.data()))
+                        .ok()
+                        .and_then(|st0| {
+                            st0.kerning(
+                                read_fonts::types::GlyphId::new(u32::from(first)),
+                                read_fonts::types::GlyphId::new(u32::from(second)),
+                            )
+                        })
+                }
+                _ => None,
+            };
+            if let Some(value) = value {
+                return value as f32;
+            }
+        }
+    }
+    0.0
+}
+
 pub(crate) struct LoadedFont {
-    pub(crate) raster: FontVec,
+    pub(crate) data: Arc<Vec<u8>>,
     pub(crate) font: skrifa::Font,
 }
 
 struct ShapedGlyph {
     font: Arc<LoadedFont>,
-    glyph: ab_glyph::Glyph,
+    glyph_id: u16,
+    x: f32,
+    y: f32,
 }
 
 fn apply_synthetic_bold(pixels: &mut [u8], width: u32, height: u32, weight: u16) {
@@ -282,25 +346,19 @@ impl LoadedFont {
     /// we perform the same f32 operations in the same order using the same
     /// hhea table values parsed by read-fonts.
     pub(crate) fn line_metrics(&self, font_size: f32) -> (f32, f32, f32) {
-        if let Some(line) = self.font.metrics().hhea_line {
-            let ascent_unscaled = line.ascender.to_f32();
-            let descent_unscaled = line.descender.to_f32();
-            let line_gap_unscaled = line.line_gap.to_f32();
-            let vertical_scale = font_size / (ascent_unscaled - descent_unscaled);
-            (
-                vertical_scale * ascent_unscaled,
-                vertical_scale * descent_unscaled,
-                vertical_scale * line_gap_unscaled,
-            )
-        } else {
-            (0.0, 0.0, 0.0)
-        }
+        line_metrics_of(&self.font, font_size)
     }
 
-    fn from_bytes(bytes: Vec<u8>) -> Result<Self, ab_glyph::InvalidFont> {
-        let raster = FontVec::try_from_vec(bytes.clone())?;
-        let font = skrifa::Font::new(bytes.clone(), 0).ok_or(ab_glyph::InvalidFont)?;
-        Ok(Self { raster, font })
+    /// Height of the em box in font units (hhea ascender − descender).
+    pub(crate) fn height_unscaled(&self) -> f32 {
+        height_unscaled_of(&self.font)
+    }
+
+    pub(crate) fn from_bytes(bytes: Vec<u8>) -> Result<Self, String> {
+        let data = Arc::new(bytes);
+        let source: std::sync::Arc<dyn AsRef<[u8]> + Send + Sync> = data.clone();
+        let font = skrifa::Font::new(source, 0).ok_or_else(|| "invalid font data".to_string())?;
+        Ok(Self { data, font })
     }
 }
 
@@ -528,15 +586,14 @@ impl FontCache {
         if fonts.is_empty() {
             return Ok(None);
         }
-        let scale = PxScale::from(font_size);
         let metric_ascent = fonts
             .iter()
-            .map(|font| font.raster.as_scaled(scale).ascent())
+            .map(|font| font.line_metrics(font_size).0)
             .fold(0.0_f32, f32::max)
             .ceil();
         let metric_descent = fonts
             .iter()
-            .map(|font| -font.raster.as_scaled(scale).descent())
+            .map(|font| -font.line_metrics(font_size).1)
             .fold(0.0_f32, f32::max)
             .ceil();
         let (mut glyphs, advance) = shape_runs(text, font_size, &fonts)?;
@@ -545,17 +602,26 @@ impl FontCache {
         let mut top = -metric_ascent;
         let mut bottom = metric_descent;
         for glyph in &glyphs {
-            if let Some(outlined) = glyph.font.raster.outline_glyph(glyph.glyph.clone()) {
-                let bounds = outlined.px_bounds();
-                left = left.min(bounds.min.x.floor());
-                right = right.max(bounds.max.x.ceil());
-                top = top.min(bounds.min.y.floor());
-                bottom = bottom.max(bounds.max.y.ceil());
+            let Ok(font_ref) = FontRef::new(&glyph.font.data) else {
+                continue;
+            };
+            if let Some(outlined) = GlyfOutline::new(
+                &font_ref,
+                glyph.glyph_id,
+                font_size,
+                glyph.font.height_unscaled(),
+                (glyph.x, glyph.y),
+            ) {
+                let ((min_x, min_y), (max_x, max_y)) = outlined.px_bounds();
+                left = left.min(min_x.floor());
+                right = right.max(max_x.ceil());
+                top = top.min(min_y.floor());
+                bottom = bottom.max(max_y.ceil());
             }
         }
         let horizontal_shift = -left;
         for glyph in &mut glyphs {
-            glyph.glyph.position.x += horizontal_shift;
+            glyph.x += horizontal_shift;
         }
         let total_width = (right - left).ceil().max(0.0) as u32;
         let total_height = (bottom - top).ceil().max(0.0) as u32;
@@ -573,10 +639,19 @@ impl FontCache {
         let mut pixels = vec![0u8; (total_width * total_height) as usize];
 
         for glyph in &glyphs {
-            if let Some(outlined) = glyph.font.raster.outline_glyph(glyph.glyph.clone()) {
-                let bounds = outlined.px_bounds();
-                let gx = bounds.min.x.floor() as i32;
-                let gy = bounds.min.y.floor() as i32 + baseline as i32;
+            let Ok(font_ref) = FontRef::new(&glyph.font.data) else {
+                continue;
+            };
+            if let Some(outlined) = GlyfOutline::new(
+                &font_ref,
+                glyph.glyph_id,
+                font_size,
+                glyph.font.height_unscaled(),
+                (glyph.x, glyph.y),
+            ) {
+                let ((min_x, min_y), _) = outlined.px_bounds();
+                let gx = min_x.floor() as i32;
+                let gy = min_y.floor() as i32 + baseline as i32;
 
                 outlined.draw(|rx, ry, coverage| {
                     let px = gx + rx as i32;
@@ -753,7 +828,7 @@ pub fn layout_text_box(request: &TextBox) -> Result<TextBoxLayout, RasterError> 
     };
     let ascent = fonts
         .iter()
-        .map(|font| font.raster.as_scaled(PxScale::from(font_size)).ascent())
+        .map(|font| font.line_metrics(font_size).0)
         .fold(0.0_f32, f32::max);
     let mut positioned = Vec::with_capacity(lines.len());
     for (index, line) in lines.into_iter().enumerate() {
@@ -886,22 +961,83 @@ pub fn fit_text(
 }
 
 /// Measure text width using an explicit font instance.
-pub fn measure_text_width_with_font<F: Font>(text: &str, font: &F, font_size: f32) -> f32 {
+/// A parsed font for the public text-measurement/fitting helpers.
+///
+/// Replaces the former `ab_glyph::Font` generic bound on those helpers (a
+/// breaking change inherent to the ab_glyph/ttf-parser removal; the only
+/// callers were in this workspace).
+#[derive(Clone)]
+pub struct RasterFont {
+    font: skrifa::Font,
+    data: Arc<Vec<u8>>,
+}
+
+impl RasterFont {
+    /// Parses font bytes (zero-copy into the skrifa font model).
+    pub fn new(bytes: Vec<u8>) -> Result<Self, RasterError> {
+        let data = Arc::new(bytes);
+        let source: std::sync::Arc<dyn AsRef<[u8]> + Send + Sync> = data.clone();
+        let font = skrifa::Font::new(source, 0)
+            .ok_or_else(|| RasterError::Scene("invalid font data".into()))?;
+        Ok(Self { font, data })
+    }
+
+    /// cmap glyph id for `c`; 0 when unmapped (matches ab_glyph).
+    pub fn glyph_id(&self, c: char) -> u16 {
+        self.font
+            .charmap()
+            .map_unicode(c)
+            .map(|g| g.to_u32() as u16)
+            .unwrap_or(0)
+    }
+
+    /// hmtx advance scaled like `ab_glyph::ScaleFont::h_advance`.
+    pub fn h_advance(&self, glyph_id: u16, font_size: f32) -> f32 {
+        let height_unscaled = height_unscaled_of(&self.font);
+        if height_unscaled == 0.0 {
+            return 0.0;
+        }
+        (font_size / height_unscaled)
+            * self
+                .font
+                .glyph_metrics()
+                .h_advance(read_fonts::types::GlyphId::new(u32::from(glyph_id)))
+    }
+
+    /// Legacy `kern`-table kerning scaled like `ab_glyph`; 0 without a kern
+    /// table.
+    pub fn kern(&self, first: u16, second: u16, font_size: f32) -> f32 {
+        let height_unscaled = height_unscaled_of(&self.font);
+        if height_unscaled == 0.0 {
+            return 0.0;
+        }
+        let Ok(font_ref) = FontRef::new(&self.data) else {
+            return 0.0;
+        };
+        (font_size / height_unscaled) * legacy_kern_units(&font_ref, first, second)
+    }
+
+    /// `(ascent, descent, line_gap)` at `font_size`, replicating ab_glyph.
+    pub fn line_metrics(&self, font_size: f32) -> (f32, f32, f32) {
+        line_metrics_of(&self.font, font_size)
+    }
+}
+
+pub fn measure_text_width_with_font(text: &str, font: &RasterFont, font_size: f32) -> f32 {
     if text.is_empty() || !font_size.is_finite() || font_size <= 0.0 {
         return 0.0;
     }
-    let scaled = font.as_scaled(PxScale::from(font_size));
     let mut total_width = 0.0_f32;
-    let mut prev_glyph: Option<ab_glyph::GlyphId> = None;
+    let mut prev_glyph: Option<u16> = None;
     for ch in text.chars() {
         if ch == '\n' || ch == '\r' {
             continue;
         }
-        let glyph_id = scaled.glyph_id(ch);
+        let glyph_id = font.glyph_id(ch);
         if let Some(prev) = prev_glyph {
-            total_width += scaled.kern(prev, glyph_id);
+            total_width += font.kern(prev, glyph_id, font_size);
         }
-        total_width += scaled.h_advance(glyph_id);
+        total_width += font.h_advance(glyph_id, font_size);
         prev_glyph = Some(glyph_id);
     }
     total_width
@@ -911,9 +1047,9 @@ pub fn measure_text_width_with_font<F: Font>(text: &str, font: &F, font_size: f3
 ///
 /// Accumulates words into lines such that each line does not exceed `max_box_width`.
 /// Respects explicit line breaks in the input string.
-pub fn fill_text_box<F: Font>(
+pub fn fill_text_box(
     text: &str,
-    font: &F,
+    font: &RasterFont,
     font_size: f32,
     max_box_width: f32,
 ) -> Vec<String> {
@@ -972,9 +1108,9 @@ pub fn fill_text_box<F: Font>(
 ///
 /// Finds the maximum font size in `[options.min_font_size, options.max_font_size]` such that
 /// the word-wrapped text fits within `options.max_lines` and `options.max_box_width` (and optional `max_box_height`).
-pub fn fit_text_on_n_lines<F: Font>(
+pub fn fit_text_on_n_lines(
     text: &str,
-    font: &F,
+    font: &RasterFont,
     options: &FitTextOnNLinesOptions,
 ) -> Result<TextFitResult, LayoutError> {
     if options.max_lines == 0 {
@@ -1006,8 +1142,8 @@ pub fn fit_text_on_n_lines<F: Font>(
     }
 
     if text.trim().is_empty() {
-        let scaled = font.as_scaled(PxScale::from(options.max_font_size));
-        let total_height = (scaled.ascent() - scaled.descent()).max(options.max_font_size);
+        let (a, d, _) = font.line_metrics(options.max_font_size);
+        let total_height = (a - d).max(options.max_font_size);
         return Ok(TextFitResult {
             font_size: options.max_font_size,
             lines: if text.is_empty() {
@@ -1033,12 +1169,12 @@ pub fn fit_text_on_n_lines<F: Font>(
             }
             max_w = max_w.max(w);
         }
-        let scaled = font.as_scaled(PxScale::from(size));
-        let line_h = (scaled.ascent() - scaled.descent() + scaled.line_gap()).max(size);
+        let (a, d, g) = font.line_metrics(size);
+        let line_h = (a - d + g).max(size);
         let total_h = if lines.is_empty() {
             0.0
         } else if lines.len() == 1 {
-            (scaled.ascent() - scaled.descent()).max(size)
+            (a - d).max(size)
         } else {
             lines.len() as f32 * line_h
         };
@@ -1090,9 +1226,8 @@ pub fn fit_text_on_n_lines<F: Font>(
     } else {
         // Fallback to min_font_size with best effort wrapping
         let lines = fill_text_box(text, font, options.min_font_size, options.max_box_width);
-        let scaled = font.as_scaled(PxScale::from(options.min_font_size));
-        let line_h =
-            (scaled.ascent() - scaled.descent() + scaled.line_gap()).max(options.min_font_size);
+        let (a, d, g) = font.line_metrics(options.min_font_size);
+        let line_h = (a - d + g).max(options.min_font_size);
         let total_height = if lines.is_empty() {
             0.0
         } else {
@@ -1305,18 +1440,17 @@ pub fn create_rounded_text_box_from_measurements(
 }
 
 /// Create a parametric rounded text box SVG path string from rendered lines of text.
-pub fn create_rounded_text_box<F: Font>(
+pub fn create_rounded_text_box(
     lines: &[String],
-    font: &F,
+    font: &RasterFont,
     font_size: f32,
     options: &RoundedTextBoxOptions,
 ) -> String {
     if lines.is_empty() {
         return String::new();
     }
-    let scaled = font.as_scaled(PxScale::from(font_size));
-    let line_height = (scaled.ascent() - scaled.descent() + scaled.line_gap()).max(font_size)
-        + options.padding_y * 2.0;
+    let (a, d, g) = font.line_metrics(font_size);
+    let line_height = (a - d + g).max(font_size) + options.padding_y * 2.0;
     let measurements: Vec<TextLineDimension> = lines
         .iter()
         .map(|line| {
@@ -1520,8 +1654,9 @@ fn shape_runs(
             let y = g.y_offset;
             output.push(ShapedGlyph {
                 font: font.clone(),
-                glyph: ab_glyph::GlyphId(g.glyph_id)
-                    .with_scale_and_position(PxScale::from(font_size), ab_glyph::point(x, y)),
+                glyph_id: g.glyph_id,
+                x,
+                y,
             });
             cursor_x += g.x_advance;
         }
@@ -1956,7 +2091,7 @@ mod tests {
 
     #[test]
     fn test_fill_text_box_single_and_multi_line() {
-        let font = FontVec::try_from_vec(BUNDLED_FONT.to_vec()).unwrap();
+        let font = RasterFont::new(BUNDLED_FONT.to_vec()).unwrap();
 
         // 1. Single line fits
         let lines = fill_text_box("Hello world", &font, 16.0, 500.0);
@@ -1989,7 +2124,7 @@ mod tests {
 
     #[test]
     fn test_fit_text_on_n_lines_optimal_scaling() {
-        let font = FontVec::try_from_vec(BUNDLED_FONT.to_vec()).unwrap();
+        let font = RasterFont::new(BUNDLED_FONT.to_vec()).unwrap();
 
         // Fits on 1 line
         let options = FitTextOnNLinesOptions {
@@ -2036,7 +2171,7 @@ mod tests {
 
     #[test]
     fn test_fit_text_on_n_lines_invalid_constraints_error() {
-        let font = FontVec::try_from_vec(BUNDLED_FONT.to_vec()).unwrap();
+        let font = RasterFont::new(BUNDLED_FONT.to_vec()).unwrap();
 
         // max_lines == 0
         let opt_zero_lines = FitTextOnNLinesOptions {
@@ -2072,7 +2207,7 @@ mod tests {
 
     #[test]
     fn test_create_rounded_text_box_svg_generation() {
-        let font = FontVec::try_from_vec(BUNDLED_FONT.to_vec()).unwrap();
+        let font = RasterFont::new(BUNDLED_FONT.to_vec()).unwrap();
         let lines = vec!["Title Line".to_string(), "Subtitle Line Long".to_string()];
         let options = RoundedTextBoxOptions {
             padding_x: 16.0,
@@ -2119,5 +2254,70 @@ mod tests {
         // Invalid font bytes should fail gracefully
         let err_res = cache.register_font_bytes("bad_font", vec![0, 1, 2, 3]);
         assert!(err_res.is_err());
+    }
+    // ── Differential outline golden: new glyf_outline path vs the
+    // ab_glyph 0.2.32 reference (fixture captured from the old path BEFORE
+    // the swap; never regenerate without investigating). ──
+
+    #[test]
+    fn glyf_outlines_match_ab_glyph_reference() {
+        use read_fonts::TableProvider;
+        let font = read_fonts::FontRef::new(BUNDLED_FONT).expect("bundled font valid");
+        let model = skrifa::Font::new(BUNDLED_FONT.to_vec(), 0).expect("bundled font valid");
+        let charmap = model.charmap();
+        let gid = |c: char| charmap.map_unicode(c).map(|g| g.to_u32() as u16);
+        let hhea = font.hhea().expect("bundled font has hhea");
+        let height_unscaled =
+            f32::from(hhea.ascender().to_i16()) - f32::from(hhea.descender().to_i16());
+
+        // simple, implied-point, composite, ligature, empty + unmapped glyphs
+        // at two sizes and integer/fractional positions.
+        let mut cases: Vec<(u16, f32, (f32, f32))> = Vec::new();
+        for c in ['H', 'O', 'S', 'l'] {
+            if let Some(g) = gid(c) {
+                cases.push((g, 24.0, (0.0, 0.0)));
+                cases.push((g, 32.0, (12.5, -3.25)));
+            }
+        }
+        for c in ['\u{e9}', '\u{fb01}'] {
+            if let Some(g) = gid(c) {
+                cases.push((g, 24.0, (0.0, 0.0)));
+                cases.push((g, 32.0, (12.5, -3.25)));
+            }
+        }
+        // Unmapped CJK resolves to glyph 0 (.notdef) — same as the
+        // ab_glyph reference (glyph_id returns 0 for unmapped chars).
+        cases.push((0, 24.0, (0.0, 0.0)));
+        let space = gid(' ').expect("space mapped");
+        cases.push((space, 24.0, (0.0, 0.0)));
+
+        let mut actual = String::new();
+        for (g, size, pos) in &cases {
+            let repr = match crate::glyf_outline::GlyfOutline::new(
+                &font,
+                *g,
+                *size,
+                height_unscaled,
+                *pos,
+            ) {
+                None => format!("{g}@{size}x{pos:?}\nNone\n"),
+                Some(o) => format!("{g}@{size}x{pos:?}\n{}", o.dump_repr()),
+            };
+            actual.push_str(&repr);
+        }
+
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/glyf_outlines.golden");
+        let expected = std::fs::read_to_string(&fixture)
+            .unwrap_or_else(|e| panic!("missing golden fixture {}: {e}", fixture.display()));
+        assert_eq!(
+            expected.len(),
+            actual.len(),
+            "golden length mismatch (investigate, do not regenerate)"
+        );
+        for (i, (e, a)) in expected.bytes().zip(actual.bytes()).enumerate() {
+            assert_eq!(e, a,
+                "golden byte mismatch for glyf outlines at byte {i}: fixture {e:#04x}, actual {a:#04x} (investigate, do not regenerate)");
+        }
     }
 }

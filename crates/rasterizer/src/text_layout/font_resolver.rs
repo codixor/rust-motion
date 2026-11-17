@@ -60,11 +60,42 @@ impl FontResolver {
 pub(crate) fn grapheme_supported(font: &LoadedFont, grapheme: &str) -> bool {
     let charmap = font.font.charmap();
     grapheme.chars().all(|character| {
-        charmap.map_unicode(character).is_some()
+        charmap
+            .map_unicode(character)
+            .map(|g| g.to_u32() != 0)
+            .unwrap_or(false)
             || character.is_control()
             || character.is_whitespace()
             || character == '\u{200d}'
             || ('\u{fe00}'..='\u{fe0f}').contains(&character)
             || ('\u{e0100}'..='\u{e01ef}').contains(&character)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    const BUNDLED_FONT: &[u8] = include_bytes!("../../assets/fonts/NotoSans-Regular.ttf");
+    const CJK_FONT: &[u8] = include_bytes!("../../tests/fixtures/fallback_cjk.ttf");
+
+    /// Regression for the glyph-0 fallback bug: a cmap mapping that resolves
+    /// to glyph 0 (or no mapping) must count as unsupported so resolution
+    /// falls through to the next font instead of rendering tofu.
+    #[test]
+    fn multi_font_fallback_skips_glyph_zero_mappings() {
+        let bundled = LoadedFont::from_bytes(BUNDLED_FONT.to_vec()).expect("bundled valid");
+        let cjk = LoadedFont::from_bytes(CJK_FONT.to_vec()).expect("cjk valid");
+
+        // Bundled Noto has no CJK coverage; the tiny fixture font only has
+        // U+4F60.
+        assert!(!grapheme_supported(&bundled, "你"));
+        assert!(grapheme_supported(&cjk, "你"));
+        assert!(grapheme_supported(&bundled, "A"));
+
+        let resolver = FontResolver::from_fonts(vec![Arc::new(bundled), Arc::new(cjk)]);
+        assert_eq!(resolver.resolve_font_for_grapheme("A"), 0);
+        assert_eq!(resolver.resolve_font_for_grapheme("你"), 1);
+    }
 }

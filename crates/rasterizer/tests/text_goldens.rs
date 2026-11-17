@@ -14,8 +14,8 @@ use std::sync::Arc;
 use rust_motion_rasterizer::backend::{FrameConfig, RasterizerBackend};
 use rust_motion_rasterizer::scene::{ImageFit, Scene, SceneNode};
 use rust_motion_rasterizer::text_layout::{
-    segment_bidi_runs, shaper::shape_bidi_runs, FontResolver, TextStyle, TextLayoutEngine,
-    TextDirection,
+    segment_bidi_runs, shaper::shape_bidi_runs, FontResolver, TextDirection, TextLayoutEngine,
+    TextStyle,
 };
 use rust_motion_rasterizer::{Color, FontCache, TinySkiaBackend};
 
@@ -34,7 +34,9 @@ const SVG_RENDER: &str = "svg_render.png";
 const TEXT_RENDER: &str = "rendered_text.png";
 
 fn fixture_path(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURES).join(name)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(FIXTURES)
+        .join(name)
 }
 
 fn update_enabled() -> bool {
@@ -65,8 +67,10 @@ fn capture_shaping() -> String {
         let runs = segment_bidi_runs(text, TextDirection::Auto);
         let shaped = shape_bidi_runs(text, &runs, &resolver, &style)
             .unwrap_or_else(|e| panic!("shaping '{name}' failed: {e}"));
-        out.push_str(&format!("case {name}
-"));
+        out.push_str(&format!(
+            "case {name}
+"
+        ));
         for (i, run) in shaped.iter().enumerate() {
             out.push_str(&format!(
                 "  run {i} font={} rtl={} range={}..{} width={:.6}

@@ -98,11 +98,7 @@ pub fn shape_bidi_runs(
             let mut glyphs = Vec::new();
             let mut run_width = 0.0_f32;
 
-            for (info, pos) in buffer
-                .glyph_infos()
-                .iter()
-                .zip(buffer.glyph_positions())
-            {
+            for (info, pos) in buffer.glyph_infos().iter().zip(buffer.glyph_positions()) {
                 let glyph_id = info.glyph_id as u16;
                 let x_advance = (pos.x_advance as f32 * unit_scale) + style.letter_spacing;
                 let y_advance = pos.y_advance as f32 * unit_scale;

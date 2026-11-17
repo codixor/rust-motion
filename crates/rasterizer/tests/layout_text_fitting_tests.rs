@@ -1,16 +1,15 @@
 //! Integration & boundary tests for Milestone 3 Advanced Layout & Text Fitting Utilities.
 
-use ab_glyph::FontVec;
 use rust_motion_rasterizer::font::{
     create_rounded_text_box, create_rounded_text_box_from_measurements, fill_text_box,
-    fit_text_on_n_lines, measure_text_width_with_font, FitTextOnNLinesOptions,
+    fit_text_on_n_lines, measure_text_width_with_font, FitTextOnNLinesOptions, RasterFont,
     RoundedTextBoxOptions, TextAlign, TextLineDimension,
 };
 
 const BUNDLED_FONT: &[u8] = include_bytes!("../../../assets/fonts/NotoSans-Regular.ttf");
 
-fn get_test_font() -> FontVec {
-    FontVec::try_from_vec(BUNDLED_FONT.to_vec()).expect("bundled font is valid")
+fn get_test_font() -> RasterFont {
+    RasterFont::new(BUNDLED_FONT.to_vec()).expect("bundled font is valid")
 }
 
 #[test]

@@ -14,7 +14,7 @@ sha2       = { workspace = true }
 image      = { workspace = true }
 tiny-skia  = { workspace = true }
 resvg      = { workspace = true, default-features = false }
-ab_glyph   = { workspace = true }
+ab_glyph_rasterizer = { workspace = true }
 harfrust   = { workspace = true }
 skrifa     = { workspace = true }
 read-fonts = { workspace = true }
