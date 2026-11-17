@@ -38,7 +38,7 @@ impl TextLayoutEngine {
         // 2. UAX #9 Bidirectional segmentation
         let bidi_runs = segment_bidi_runs(text, style.direction);
 
-        // 3. HarfBuzz OpenType shaping via rustybuzz
+        // 3. HarfBuzz OpenType shaping via harfrust
         let shaped_runs = shape_bidi_runs(text, &bidi_runs, &resolver, style)?;
 
         // 4. UAX #14 Line breaking and word wrapping

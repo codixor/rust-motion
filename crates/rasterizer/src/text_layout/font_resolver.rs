@@ -45,7 +45,7 @@ impl FontResolver {
     /// Finds the index of the first font in the chain that supports the given grapheme cluster.
     pub fn resolve_font_for_grapheme(&self, grapheme: &str) -> usize {
         for (idx, font) in self.fonts.iter().enumerate() {
-            if grapheme_supported(&font.raster, grapheme) {
+            if grapheme_supported(font, grapheme) {
                 return idx;
             }
         }
@@ -53,11 +53,14 @@ impl FontResolver {
     }
 }
 
-/// Checks whether a font rasterizer supports all characters in a grapheme cluster.
-pub(crate) fn grapheme_supported(font: &ab_glyph::FontVec, grapheme: &str) -> bool {
-    use ab_glyph::Font;
+/// Checks whether a font supports all characters in a grapheme cluster.
+///
+/// Uses the font's Unicode cmap: a missing mapping (or an explicit mapping to
+/// glyph 0) means the font cannot render the character.
+pub(crate) fn grapheme_supported(font: &LoadedFont, grapheme: &str) -> bool {
+    let charmap = font.font.charmap();
     grapheme.chars().all(|character| {
-        font.glyph_id(character).0 != 0
+        charmap.map_unicode(character).is_some()
             || character.is_control()
             || character.is_whitespace()
             || character == '\u{200d}'

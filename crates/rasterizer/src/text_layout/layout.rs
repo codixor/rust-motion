@@ -3,7 +3,6 @@
 use crate::text_layout::font_resolver::FontResolver;
 use crate::text_layout::line_breaker::LineGlyphs;
 use crate::text_layout::style::{TextAlignment, TextStyle};
-use ab_glyph::{Font, PxScale, ScaleFont};
 use serde::{Deserialize, Serialize};
 
 /// 2D axis-aligned bounding rectangle.
@@ -70,18 +69,18 @@ pub fn compute_layout(
     }
 
     let fonts = font_resolver.fonts();
-    let scale = PxScale::from(style.font_size);
 
-    // Compute ascent and descent across loaded fonts
+    // Compute ascent and descent across loaded fonts using the same hhea
+    // line-metric arithmetic ab_glyph used, so goldens stay byte-identical.
     let ascent = fonts
         .iter()
-        .map(|f| f.raster.as_scaled(scale).ascent())
+        .map(|f| f.line_metrics(style.font_size).0)
         .fold(0.0_f32, f32::max)
         .max(style.font_size * 0.8);
 
     let descent = fonts
         .iter()
-        .map(|f| -f.raster.as_scaled(scale).descent())
+        .map(|f| -f.line_metrics(style.font_size).1)
         .fold(0.0_f32, f32::max)
         .max(style.font_size * 0.2);
 

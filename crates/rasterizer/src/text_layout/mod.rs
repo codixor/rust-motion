@@ -1,7 +1,7 @@
 //! `TextLayoutEngine` typography subsystem for browser-free video generation.
 //!
 //! Provides:
-//! - HarfBuzz OpenType shaping via `rustybuzz`
+//! - HarfBuzz OpenType shaping via `harfrust`
 //! - Unicode Bidirectional Algorithm (UAX #9) via `unicode-bidi`
 //! - Unicode Line Breaking (UAX #14) via `unicode-linebreak`
 //! - Deterministic font fallback and cluster-to-char mapping

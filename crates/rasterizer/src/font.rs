@@ -245,7 +245,7 @@ struct TextRasterKey {
 
 pub(crate) struct LoadedFont {
     pub(crate) raster: FontVec,
-    pub(crate) data: Arc<Vec<u8>>,
+    pub(crate) font: skrifa::Font,
 }
 
 struct ShapedGlyph {
@@ -275,12 +275,32 @@ fn apply_synthetic_bold(pixels: &mut [u8], width: u32, height: u32, weight: u16)
 }
 
 impl LoadedFont {
+    /// Pixel-scaled line metrics replicating `ab_glyph::ScaleFont` arithmetic
+    /// bit-for-bit so layouts stay byte-identical to the pre-migration output.
+    ///
+    /// ab_glyph scales each hhea metric by `font_size / (ascender - descender)`;
+    /// we perform the same f32 operations in the same order using the same
+    /// hhea table values parsed by read-fonts.
+    pub(crate) fn line_metrics(&self, font_size: f32) -> (f32, f32, f32) {
+        if let Some(line) = self.font.metrics().hhea_line {
+            let ascent_unscaled = line.ascender.to_f32();
+            let descent_unscaled = line.descender.to_f32();
+            let line_gap_unscaled = line.line_gap.to_f32();
+            let vertical_scale = font_size / (ascent_unscaled - descent_unscaled);
+            (
+                vertical_scale * ascent_unscaled,
+                vertical_scale * descent_unscaled,
+                vertical_scale * line_gap_unscaled,
+            )
+        } else {
+            (0.0, 0.0, 0.0)
+        }
+    }
+
     fn from_bytes(bytes: Vec<u8>) -> Result<Self, ab_glyph::InvalidFont> {
         let raster = FontVec::try_from_vec(bytes.clone())?;
-        Ok(Self {
-            raster,
-            data: Arc::new(bytes),
-        })
+        let font = skrifa::Font::new(bytes.clone(), 0).ok_or(ab_glyph::InvalidFont)?;
+        Ok(Self { raster, font })
     }
 }
 

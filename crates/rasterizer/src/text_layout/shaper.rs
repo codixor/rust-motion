@@ -1,9 +1,10 @@
-//! HarfBuzz text shaping using `rustybuzz`.
+//! HarfBuzz text shaping using `harfrust` (the maintained Rust HarfBuzz port).
 
 use crate::backend::RasterError;
 use crate::text_layout::bidi::BidiRun;
 use crate::text_layout::font_resolver::FontResolver;
 use crate::text_layout::style::TextStyle;
+use harfrust::{shape, Buffer, Direction, ShapeOptions, ShaperFont};
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -75,33 +76,32 @@ pub fn shape_bidi_runs(
             let seg_text = &run_text[seg_start..seg_end];
             let font = &fonts[font_index];
 
-            let face = rustybuzz::Face::from_slice(font.data.as_slice(), 0).ok_or_else(|| {
-                RasterError::Scene(format!(
-                    "font index {font_index} could not be loaded into shaping engine"
-                ))
-            })?;
-
+            let face = ShaperFont::new(&font.font);
             let units_per_em = (face.units_per_em() as f32).max(1.0);
             let unit_scale = style.font_size / units_per_em;
 
-            let mut buffer = rustybuzz::UnicodeBuffer::new();
+            let mut buffer = Buffer::new();
             buffer.push_str(seg_text);
-
-            if bidi_run.is_rtl {
-                buffer.set_direction(rustybuzz::Direction::RightToLeft);
+            buffer.set_direction(if bidi_run.is_rtl {
+                Direction::RightToLeft
             } else {
-                buffer.set_direction(rustybuzz::Direction::LeftToRight);
-            }
+                Direction::LeftToRight
+            });
             buffer.guess_segment_properties();
 
-            let glyph_buffer = rustybuzz::shape(&face, &[], buffer);
+            shape(&face, &mut buffer, ShapeOptions::new()).map_err(|error| {
+                RasterError::Scene(format!(
+                    "font index {font_index} failed to shape text: {error:?}"
+                ))
+            })?;
+
             let mut glyphs = Vec::new();
             let mut run_width = 0.0_f32;
 
-            for (info, pos) in glyph_buffer
+            for (info, pos) in buffer
                 .glyph_infos()
                 .iter()
-                .zip(glyph_buffer.glyph_positions())
+                .zip(buffer.glyph_positions())
             {
                 let glyph_id = info.glyph_id as u16;
                 let x_advance = (pos.x_advance as f32 * unit_scale) + style.letter_spacing;
