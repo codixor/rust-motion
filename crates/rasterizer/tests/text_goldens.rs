@@ -31,6 +31,7 @@ const FORMAT_WEBP: &str = "format_webp.webp";
 const FORMAT_GIF: &str = "format_gif.gif";
 const SVG_SOURCE: &str = "svg_fixture.svg";
 const SVG_RENDER: &str = "svg_render.png";
+const TEXT_RENDER: &str = "rendered_text.png";
 
 fn fixture_path(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join(FIXTURES).join(name)
@@ -252,6 +253,44 @@ fn render_svg_fixture() -> Vec<u8> {
     encode_png(img.as_raw(), img.width(), img.height())
 }
 
+/// Renders a fixed set of text nodes through the public rasterizer
+/// pipeline (`TinySkiaBackend` + `SceneNode::Text`) and returns the encoded
+/// PNG bytes. This is the rendered-text pixel golden: it was captured on the
+/// pre-migration `ab_glyph` rasterizer and MUST stay byte-identical after the
+/// rasterization layer is migrated to `skrifa` + `ab_glyph_rasterizer`.
+///
+/// Cases: Latin, GSUB ligatures, a composite glyph (U+00E9), synthetic bold
+/// (font_weight 700), and a second size.
+fn render_text_fixture() -> Vec<u8> {
+    let mut scene = Scene::new();
+    let cases: &[(&str, f32, u16)] = &[
+        ("Hello World", 24.0, 400),
+        ("office afford cliff", 24.0, 400),
+        ("café", 24.0, 700),
+        ("Scaling Test", 32.0, 400),
+        ("Bold ligature café", 20.0, 700),
+    ];
+    let mut y = 4.0_f32;
+    for (content, font_size, font_weight) in cases {
+        scene.push(SceneNode::Text {
+            x: 4.0,
+            y,
+            content: (*content).to_string(),
+            font_size: *font_size,
+            color: Color::rgb(16, 16, 16),
+            font_weight: *font_weight,
+            font_sources: Vec::new(),
+        });
+        y += font_size * 1.5 + 4.0;
+    }
+    let backend = TinySkiaBackend::new();
+    let config = FrameConfig::new(300, 220, 0, 30.0);
+    let img = backend
+        .render_frame(&scene, &config)
+        .expect("text render frame");
+    encode_png(img.as_raw(), img.width(), img.height())
+}
+
 fn check_fixture(name: &str, actual: &[u8]) {
     let path = fixture_path(name);
     if update_enabled() {
@@ -312,6 +351,12 @@ fn image_format_goldens() {
     check_fixture(FORMAT_JPEG, &encode_jpeg(&pixels, 64, 64));
     check_fixture(FORMAT_WEBP, &encode_webp(&pixels, 64, 64));
     check_fixture(FORMAT_GIF, &encode_gif(&pixels, 64, 64));
+}
+
+#[test]
+fn rendered_text_png_golden() {
+    let rendered = render_text_fixture();
+    check_fixture(TEXT_RENDER, &rendered);
 }
 
 #[test]
