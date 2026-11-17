@@ -704,6 +704,7 @@ const RANKED_MIN_RADIUS: i32 = 10;
 struct RankSums(Vec<[f64; 3]>);
 
 impl RankSums {
+    #[allow(clippy::manual_isolate_lowest_one)] // explicit Fenwick bit trick; x & x.wrapping_neg() is the documented form
     fn add(&mut self, rank: usize, sign: f64, v: f64) {
         let mut i = rank + 1;
         while let Some(node) = self.0.get_mut(i) {
@@ -715,6 +716,7 @@ impl RankSums {
     }
 
     /// Sums over the ranks `0..end`.
+    #[allow(clippy::manual_isolate_lowest_one)] // explicit Fenwick bit trick; x & x.wrapping_neg() is the documented form
     fn prefix(&self, end: usize) -> [f64; 3] {
         let mut acc = [0.0; 3];
         let mut i = end.min(self.0.len().saturating_sub(1));

@@ -493,6 +493,9 @@ fn cubic_t_at_length(
     1.0
 }
 
+/// Four control points of a cubic Bézier segment in (x, y) space.
+type CubicPoints = ((f64, f64), (f64, f64), (f64, f64), (f64, f64));
+
 /// Slices a cubic Bézier curve between parameter values `t0` and `t1` (in [0, 1])
 /// using two de Casteljau splits.
 fn slice_cubic_bezier(
@@ -502,7 +505,7 @@ fn slice_cubic_bezier(
     p3: (f64, f64),
     t0: f64,
     t1: f64,
-) -> ((f64, f64), (f64, f64), (f64, f64), (f64, f64)) {
+) -> CubicPoints {
     let t0 = t0.clamp(0.0, 1.0);
     let t1 = t1.clamp(0.0, 1.0);
 
@@ -533,10 +536,7 @@ fn split_cubic_at(
     p2: (f64, f64),
     p3: (f64, f64),
     t: f64,
-) -> (
-    ((f64, f64), (f64, f64), (f64, f64), (f64, f64)),
-    ((f64, f64), (f64, f64), (f64, f64), (f64, f64)),
-) {
+) -> (CubicPoints, CubicPoints) {
     let lerp =
         |a: (f64, f64), b: (f64, f64), t: f64| (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
 
