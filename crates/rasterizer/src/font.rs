@@ -2370,4 +2370,3 @@ mod tests {
         assert_eq!(legacy_kern_units(&font, 0, 1), 0.0);
     }
 }
-

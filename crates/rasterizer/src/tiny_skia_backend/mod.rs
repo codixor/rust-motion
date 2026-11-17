@@ -165,9 +165,7 @@ impl TinySkiaBackend {
         time_secs: f64,
         loop_behavior: crate::gif_cache::LoopBehavior,
     ) -> Result<Option<(usize, Arc<image::RgbaImage>)>, RasterError> {
-        let frames = self
-            .gifs
-            .load_frames_with_policy(src, &self.security)?;
+        let frames = self.gifs.load_frames_with_policy(src, &self.security)?;
         Ok(crate::gif_cache::GifFrameCache::frame_index_at_time_ms(
             &frames,
             time_secs * 1000.0,
