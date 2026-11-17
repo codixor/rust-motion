@@ -77,7 +77,7 @@ impl RectF {
     }
     /// Truncate-toward-zero i16 conversion (ttf-parser `TryNumFrom<f32>`:
     /// MIN inclusive, MAX+1 exclusive).
-    fn to_rect(&self) -> Option<(i16, i16, i16, i16)> {
+    fn to_rect(self) -> Option<(i16, i16, i16, i16)> {
         fn cvt(v: f32) -> Option<i16> {
             let i = v as i32;
             (i >= i32::from(i16::MIN) && i <= i32::from(i16::MAX)).then_some(i as i16)
@@ -672,7 +672,7 @@ impl GlyfOutline {
     ) -> Option<Self> {
         // Guard against malformed fonts whose hhea ascender equals the
         // descender: a zero divisor would produce infinite scale factors.
-        if !(height_unscaled > 0.0) {
+        if height_unscaled <= 0.0 {
             return None;
         }
         let outline = outline(font, glyph_id)?;

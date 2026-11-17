@@ -1,6 +1,6 @@
 use super::*;
 use crate::scene::{Color, ImageFit};
-use crate::video_cache::canonical_local_path;
+use crate::video_cache::canonical_local_path_with_policy;
 use wgpu::util::DeviceExt;
 
 pub(crate) struct FrameSubmission<'a> {
@@ -170,8 +170,12 @@ impl WgpuBackend {
                         load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
-                ..Default::default()
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
             });
             pass.set_pipeline(&self.ctx.image_composite_pipeline);
             pass.set_bind_group(0, &globals_bg, &[]);
@@ -197,9 +201,9 @@ impl WgpuBackend {
             });
         encoder.copy_texture_to_buffer(
             slot.texture.as_image_copy(),
-            wgpu::ImageCopyBuffer {
+            wgpu::TexelCopyBufferInfo {
                 buffer: &slot.readback,
-                layout: wgpu::ImageDataLayout {
+                layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(slot.bytes_per_row),
                     rows_per_image: Some(height),
@@ -219,7 +223,12 @@ impl WgpuBackend {
                 let _ = tx.send(result);
             });
         let _ = submission;
-        self.ctx.device.poll(wgpu::Maintain::Wait);
+        if let Err(poll_error) = self.ctx.device.poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: None,
+        }) {
+            tracing::warn!("GPU device poll failed: {poll_error}");
+        }
         rx.recv()
             .map_err(|error| RasterError::Scene(format!("layer readback channel failed: {error}")))?
             .map_err(|error| RasterError::Scene(format!("layer readback map failed: {error}")))?;
@@ -310,12 +319,20 @@ impl WgpuBackend {
             readback: false,
         })?;
         let layer_submission = layer_frame.submission_index;
-        self.ctx
-            .device
-            .poll(wgpu::Maintain::wait_for(base_submission));
-        self.ctx
-            .device
-            .poll(wgpu::Maintain::wait_for(layer_submission));
+        if let Err(poll_error) = self.ctx.device.poll(wgpu::PollType::Wait {
+            submission_index: Some(base_submission),
+
+            timeout: None,
+        }) {
+            tracing::warn!("GPU device poll failed: {poll_error}");
+        }
+        if let Err(poll_error) = self.ctx.device.poll(wgpu::PollType::Wait {
+            submission_index: Some(layer_submission),
+
+            timeout: None,
+        }) {
+            tracing::warn!("GPU device poll failed: {poll_error}");
+        }
         let composite_submission = self.composite_external_texture(
             &layer_slot,
             output_slot,
@@ -323,9 +340,13 @@ impl WgpuBackend {
             config.height,
             layer_opacity,
         )?;
-        self.ctx
-            .device
-            .poll(wgpu::Maintain::wait_for(composite_submission));
+        if let Err(poll_error) = self.ctx.device.poll(wgpu::PollType::Wait {
+            submission_index: Some(composite_submission),
+
+            timeout: None,
+        }) {
+            tracing::warn!("GPU device poll failed: {poll_error}");
+        }
         let image = self.readback_resolved_slot(output_slot, config.width, config.height)?;
         self.gpu_frame_count.fetch_add(1, Ordering::Relaxed);
         Ok(image)
@@ -370,7 +391,7 @@ impl WgpuBackend {
         queue.write_texture(
             texture.as_image_copy(),
             decoded.as_raw(),
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(decoded.width() * 4),
                 rows_per_image: Some(decoded.height()),
@@ -418,7 +439,7 @@ impl WgpuBackend {
 
     pub(crate) fn gpu_image(&self, src: &str) -> Result<Arc<GpuImageResource>, RasterError> {
         let decode_start = Instant::now();
-        let decoded = self.image_cache.load(src)?;
+        let decoded = self.image_cache.load_with_policy(src, &self.security)?;
         self.video_decode_ns
             .fetch_add(decode_start.elapsed().as_nanos() as u64, Ordering::Relaxed);
         // ImageCache canonicalizes local paths before indexing them. Keep the
@@ -427,7 +448,9 @@ impl WgpuBackend {
         let key = if src.trim_start().starts_with("data:") {
             src.trim().to_string()
         } else {
-            canonical_local_path(src)?.display().to_string()
+            canonical_local_path_with_policy(src, &self.security)?
+                .display()
+                .to_string()
         };
         self.gpu_pixels(&key, &decoded)
     }
@@ -458,7 +481,7 @@ impl WgpuBackend {
                     }
                     let upload_start = Instant::now();
                     queue.write_texture(
-                        wgpu::ImageCopyTexture {
+                        wgpu::TexelCopyTextureInfo {
                             texture: &resource._texture,
                             mip_level: 0,
                             origin: wgpu::Origin3d {
@@ -469,7 +492,7 @@ impl WgpuBackend {
                             aspect: wgpu::TextureAspect::All,
                         },
                         &upload,
-                        wgpu::ImageDataLayout {
+                        wgpu::TexelCopyBufferLayout {
                             offset: 0,
                             bytes_per_row: Some(rect.width),
                             rows_per_image: Some(rect.height),
@@ -520,7 +543,7 @@ impl WgpuBackend {
         queue.write_texture(
             texture.as_image_copy(),
             &snapshot.pixels,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(snapshot.width),
                 rows_per_image: Some(snapshot.height),
@@ -566,7 +589,9 @@ impl WgpuBackend {
         looped: bool,
     ) -> Result<Arc<GpuImageResource>, RasterError> {
         let decode_start = Instant::now();
-        let frame = self.video_cache.load(src, time, sampling_fps, looped)?;
+        let frame =
+            self.video_cache
+                .load_with_policy(src, time, sampling_fps, looped, &self.security)?;
         self.video_decode_ns
             .fetch_add(decode_start.elapsed().as_nanos() as u64, Ordering::Relaxed);
         let frame_index = self
@@ -575,7 +600,7 @@ impl WgpuBackend {
         // VideoFrameCache canonicalizes local paths, so the GPU cache must use
         // the same identity. Otherwise `clip.mkv` and `file:///.../clip.mkv`
         // decode to the same frame but upload duplicate GPU textures.
-        let canonical = canonical_local_path(src)?;
+        let canonical = canonical_local_path_with_policy(src, &self.security)?;
         let key = format!(
             "video:{}:{sampling_fps:.6}:{frame_index}",
             canonical.display()
@@ -671,9 +696,13 @@ impl WgpuBackend {
         let rx = submitted.readback_rx;
         debug_assert!(rx.is_none());
         let gpu_submit_start = Instant::now();
-        self.ctx
-            .device
-            .poll(wgpu::Maintain::wait_for(submission_index));
+        if let Err(poll_error) = self.ctx.device.poll(wgpu::PollType::Wait {
+            submission_index: Some(submission_index),
+
+            timeout: None,
+        }) {
+            tracing::warn!("GPU device poll failed: {poll_error}");
+        }
         self.gpu_submit_no_readback_ns.fetch_add(
             gpu_submit_start.elapsed().as_nanos() as u64,
             Ordering::Relaxed,
@@ -766,9 +795,13 @@ impl WgpuBackend {
                     .pop_front()
                     .expect("GPU-native in-flight ring length was checked");
                 let gpu_submit_start = Instant::now();
-                self.ctx
-                    .device
-                    .poll(wgpu::Maintain::wait_for(submission_index));
+                if let Err(poll_error) = self.ctx.device.poll(wgpu::PollType::Wait {
+                    submission_index: Some(submission_index),
+
+                    timeout: None,
+                }) {
+                    tracing::warn!("GPU device poll failed: {poll_error}");
+                }
                 self.gpu_submit_no_readback_ns.fetch_add(
                     gpu_submit_start.elapsed().as_nanos() as u64,
                     Ordering::Relaxed,
@@ -800,9 +833,13 @@ impl WgpuBackend {
         }
         while let Some((queued_frame, queued_slot, submission_index)) = in_flight.pop_front() {
             let gpu_submit_start = Instant::now();
-            self.ctx
-                .device
-                .poll(wgpu::Maintain::wait_for(submission_index));
+            if let Err(poll_error) = self.ctx.device.poll(wgpu::PollType::Wait {
+                submission_index: Some(submission_index),
+
+                timeout: None,
+            }) {
+                tracing::warn!("GPU device poll failed: {poll_error}");
+            }
             self.gpu_submit_no_readback_ns.fetch_add(
                 gpu_submit_start.elapsed().as_nanos() as u64,
                 Ordering::Relaxed,
@@ -953,7 +990,7 @@ impl WgpuBackend {
             queue.write_texture(
                 dummy_texture.as_image_copy(),
                 &[0, 0, 0, 0],
-                wgpu::ImageDataLayout {
+                wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(4),
                     rows_per_image: Some(1),
@@ -998,7 +1035,7 @@ impl WgpuBackend {
             queue.write_texture(
                 default_path_mask_texture.as_image_copy(),
                 &[255],
-                wgpu::ImageDataLayout {
+                wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(1),
                     rows_per_image: Some(1),
@@ -1064,7 +1101,7 @@ impl WgpuBackend {
                 queue.write_texture(
                     texture.as_image_copy(),
                     &[255],
-                    wgpu::ImageDataLayout {
+                    wgpu::TexelCopyBufferLayout {
                         offset: 0,
                         bytes_per_row: Some(1),
                         rows_per_image: Some(1),
@@ -1149,8 +1186,12 @@ impl WgpuBackend {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                             store: wgpu::StoreOp::Store,
                         },
+                        depth_slice: None,
                     })],
-                    ..Default::default()
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                    multiview_mask: None,
                 });
                 mask_pass.set_pipeline(&self.ctx.path_mask_pipeline);
                 mask_pass.set_bind_group(0, &globals_bg, &[]);
@@ -1187,10 +1228,12 @@ impl WgpuBackend {
                         load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
 
             pass.set_bind_group(0, &globals_bg, &[]);
@@ -1285,8 +1328,12 @@ impl WgpuBackend {
                         load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
-                ..Default::default()
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
             });
         }
 
@@ -1347,9 +1394,9 @@ impl WgpuBackend {
         if readback {
             encoder.copy_texture_to_buffer(
                 slot.texture.as_image_copy(),
-                wgpu::ImageCopyBuffer {
+                wgpu::TexelCopyBufferInfo {
                     buffer: &slot.readback,
-                    layout: wgpu::ImageDataLayout {
+                    layout: wgpu::TexelCopyBufferLayout {
                         offset: 0,
                         bytes_per_row: Some(slot.bytes_per_row),
                         rows_per_image: Some(height),
@@ -1429,9 +1476,13 @@ impl WgpuBackend {
         } else {
             None
         };
-        self.ctx
-            .device
-            .poll(wgpu::Maintain::wait_for(in_flight.submission_index));
+        if let Err(poll_error) = self.ctx.device.poll(wgpu::PollType::Wait {
+            submission_index: Some(in_flight.submission_index),
+
+            timeout: None,
+        }) {
+            tracing::warn!("GPU device poll failed: {poll_error}");
+        }
         let submission_wait_ns = fence_start
             .map(|t| t.elapsed().as_nanos() as u64)
             .unwrap_or(0);
@@ -1690,15 +1741,15 @@ impl WgpuBackend {
             mapped_at_creation: false,
         });
         encoder.copy_texture_to_buffer(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            wgpu::ImageCopyBuffer {
+            wgpu::TexelCopyBufferInfo {
                 buffer: &staging,
-                layout: wgpu::ImageDataLayout {
+                layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(bytes_per_row),
                     rows_per_image: Some(height),
@@ -1716,7 +1767,12 @@ impl WgpuBackend {
         slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
         });
-        self.ctx.device.poll(wgpu::Maintain::Wait);
+        if let Err(poll_error) = self.ctx.device.poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: None,
+        }) {
+            tracing::warn!("GPU device poll failed: {poll_error}");
+        }
         rx.recv()
             .map_err(|error| RasterError::Scene(format!("GPU readback channel failed: {error}")))?
             .map_err(|error| RasterError::Scene(format!("GPU readback map failed: {error}")))?;

@@ -158,7 +158,7 @@ impl WgpuShaderRunner {
     pub async fn new_async() -> Result<Self, RasterError> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            ..Default::default()
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -167,19 +167,20 @@ impl WgpuShaderRunner {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| RasterError::Init("No GPU adapter found for ShaderRunner".into()))?;
+            .map_err(|e| {
+                RasterError::Init(format!("No GPU adapter found for ShaderRunner: {e}"))
+            })?;
 
         let limits = adapter.limits();
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("rust-motion-shader-runner"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: limits,
-                    memory_hints: Default::default(),
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("rust-motion-shader-runner"),
+                required_features: wgpu::Features::empty(),
+                required_limits: limits,
+                memory_hints: Default::default(),
+                experimental_features: Default::default(),
+                trace: Default::default(),
+            })
             .await
             .map_err(|e| RasterError::Init(format!("Failed to create GPU device: {e}")))?;
 
@@ -254,8 +255,8 @@ impl WgpuShaderRunner {
                 self.device
                     .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("custom_shader_pipeline_layout"),
-                        bind_group_layouts: &[&self.uniform_layout],
-                        push_constant_ranges: &[],
+                        bind_group_layouts: &[Some(&self.uniform_layout)],
+                        immediate_size: 0,
                     });
 
             let new_pipeline = Arc::new(self.device.create_render_pipeline(
@@ -264,13 +265,13 @@ impl WgpuShaderRunner {
                     layout: Some(&pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &shader_module,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &shader_module,
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: wgpu::TextureFormat::Rgba8Unorm,
                             blend: Some(wgpu::BlendState::REPLACE),
@@ -289,7 +290,7 @@ impl WgpuShaderRunner {
                     },
                     depth_stencil: None,
                     multisample: wgpu::MultisampleState::default(),
-                    multiview: None,
+                    multiview_mask: None,
                     cache: None,
                 },
             ));
@@ -378,15 +379,15 @@ impl WgpuShaderRunner {
         });
 
         encoder.copy_texture_to_buffer(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            wgpu::ImageCopyBuffer {
+            wgpu::TexelCopyBufferInfo {
                 buffer: &staging_buf,
-                layout: wgpu::ImageDataLayout {
+                layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(bytes_per_row),
                     rows_per_image: Some(height),
@@ -406,7 +407,12 @@ impl WgpuShaderRunner {
         slice.map_async(wgpu::MapMode::Read, move |res| {
             let _ = tx.send(res);
         });
-        self.device.poll(wgpu::Maintain::Wait);
+        if let Err(poll_error) = self.device.poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: None,
+        }) {
+            tracing::warn!("GPU device poll failed: {poll_error}");
+        }
         rx.recv()
             .map_err(|e| RasterError::Scene(format!("GPU channel recv failed: {e}")))?
             .map_err(|e| RasterError::Scene(format!("GPU buffer map failed: {e}")))?;
@@ -474,8 +480,8 @@ impl WgpuShaderRunner {
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("custom_shader_layout"),
-                    bind_group_layouts: &[&self.uniform_layout],
-                    push_constant_ranges: &[],
+                    bind_group_layouts: &[Some(&self.uniform_layout)],
+                    immediate_size: 0,
                 });
             let pipeline = Arc::new(self.device.create_render_pipeline(
                 &wgpu::RenderPipelineDescriptor {
@@ -483,13 +489,13 @@ impl WgpuShaderRunner {
                     layout: Some(&layout),
                     vertex: wgpu::VertexState {
                         module: &module,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &module,
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: wgpu::TextureFormat::Rgba8Unorm,
                             blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -500,7 +506,7 @@ impl WgpuShaderRunner {
                     primitive: wgpu::PrimitiveState::default(),
                     depth_stencil: None,
                     multisample: wgpu::MultisampleState::default(),
-                    multiview: None,
+                    multiview_mask: None,
                     cache: None,
                 },
             ));
@@ -545,10 +551,12 @@ impl WgpuShaderRunner {
                     load: params.load,
                     store: wgpu::StoreOp::Store,
                 },
+                depth_slice: None,
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         pass.set_pipeline(&pipeline);
         pass.set_bind_group(0, &bind_group, &[]);

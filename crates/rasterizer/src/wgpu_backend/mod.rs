@@ -55,6 +55,8 @@ pub struct WgpuBackend {
     /// pass cannot stall the ordered output slots.
     layer_resources: GpuLayerResourcePool,
     fallback: TinySkiaBackend,
+    /// Security policy for GPU-side asset loads (images, videos, lottie, audio).
+    security: crate::security::MediaSecurityPolicy,
     /// Decoded image ownership for the future GPU texture cache. Keeping this
     /// separate from the CPU backend prevents a GPU render from depending on
     /// fallback implementation details while allowing both paths to share
@@ -92,6 +94,21 @@ pub struct WgpuBackend {
 
 impl WgpuBackend {
     pub fn new() -> Result<Self, RasterError> {
+        Self::new_with_policy(crate::security::MediaSecurityPolicy::default())
+    }
+
+    /// Construct with an explicit security policy for GPU-side asset loads.
+    /// The default constructor stays fail-closed.
+    /// Replace the security policy (builder-style).
+    pub fn with_security_policy(mut self, policy: crate::security::MediaSecurityPolicy) -> Self {
+        self.fallback = TinySkiaBackend::new_with_policy(policy.clone());
+        self.security = policy;
+        self
+    }
+
+    pub fn new_with_policy(
+        policy: crate::security::MediaSecurityPolicy,
+    ) -> Result<Self, RasterError> {
         let ctx = GpuContext::new()?;
         let shader_runner = crate::shader::WgpuShaderRunner::from_device(&ctx.device, &ctx.queue);
         Ok(Self {
@@ -99,7 +116,7 @@ impl WgpuBackend {
             shader_runner,
             frame_resources: Mutex::new(HashMap::new()),
             layer_resources: Mutex::new(HashMap::new()),
-            fallback: TinySkiaBackend::new(),
+            fallback: TinySkiaBackend::new_with_policy(policy.clone()),
             image_cache: ImageCache::default(),
             video_cache: VideoFrameCache::default(),
             gpu_images: Mutex::new(GpuImageCacheState::new(256 * 1024 * 1024)),
@@ -124,6 +141,7 @@ impl WgpuBackend {
             gpu_frame_count: AtomicU64::new(0),
             cpu_fallback_frame_count: AtomicU64::new(0),
             last_cpu_fallback_reason: Mutex::new(None),
+            security: policy,
             profiling_enabled: AtomicBool::new(false),
             profile_samples: Mutex::new(Vec::new()),
         })

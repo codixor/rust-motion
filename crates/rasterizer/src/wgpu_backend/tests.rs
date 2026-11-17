@@ -1,10 +1,11 @@
 use super::*;
 use crate::backend::{FrameConfig, RasterizerBackend};
 use crate::scene::{Color, GradientStop, ImageFit, Scene, SceneNode};
+use crate::security::MediaSecurityPolicy;
 
 #[test]
 fn test_wgpu_backend_init() {
-    match WgpuBackend::new() {
+    match WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()])) {
         Ok(backend) => {
             println!("GPU backend initialised successfully");
             // Render a minimal 64x64 scene
@@ -25,7 +26,9 @@ fn test_wgpu_backend_init() {
 
 #[test]
 fn offscreen_layer_pool_reuses_resolution_slots() {
-    let Ok(backend) = WgpuBackend::new() else {
+    let Ok(backend) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping offscreen pool test");
         return;
     };
@@ -40,15 +43,17 @@ fn offscreen_layer_pool_reuses_resolution_slots() {
     let submission = backend
         .composite_external_texture(&slot, &destination, 64, 32, 0.5)
         .expect("offscreen composite submission failed");
-    backend
-        .ctx
-        .device
-        .poll(wgpu::Maintain::wait_for(submission));
+    backend.ctx.device.poll(wgpu::PollType::Wait {
+        submission_index: Some(submission),
+        timeout: None,
+    });
 }
 
 #[test]
 fn gpu_plain_rects_match_cpu_pixels_exactly() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping exact plain-rect parity test");
         return;
     };
@@ -77,9 +82,11 @@ fn gpu_plain_rects_match_cpu_pixels_exactly() {
         ],
     };
     let config = FrameConfig::new(128, 96, 0, 30.0);
-    let cpu = TinySkiaBackend::headless()
-        .render_frame(&scene, &config)
-        .expect("CPU render failed");
+    let cpu = TinySkiaBackend::headless_with_policy(MediaSecurityPolicy::sandboxed([
+        &std::env::temp_dir(),
+    ]))
+    .render_frame(&scene, &config)
+    .expect("CPU render failed");
     let gpu = gpu
         .render_frame(&scene, &config)
         .expect("GPU render failed");
@@ -88,7 +95,9 @@ fn gpu_plain_rects_match_cpu_pixels_exactly() {
 
 #[test]
 fn gpu_disjoint_texture_layer_matches_cpu_pixels() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping disjoint texture parity test");
         return;
     };
@@ -159,9 +168,11 @@ fn gpu_disjoint_texture_layer_matches_cpu_pixels() {
     };
     let config = FrameConfig::new(64, 32, 0, 30.0);
     assert!(gpu_supports_scene(&scene));
-    let cpu = TinySkiaBackend::headless()
-        .render_frame(&scene, &config)
-        .expect("CPU render failed");
+    let cpu = TinySkiaBackend::headless_with_policy(MediaSecurityPolicy::sandboxed([
+        &std::env::temp_dir(),
+    ]))
+    .render_frame(&scene, &config)
+    .expect("CPU render failed");
     let gpu_image = gpu
         .render_frame(&scene, &config)
         .expect("GPU render failed");
@@ -172,7 +183,9 @@ fn gpu_disjoint_texture_layer_matches_cpu_pixels() {
 
 #[test]
 fn gpu_overlapping_texture_layer_composites_on_gpu() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping overlapping texture parity test");
         return;
     };
@@ -242,9 +255,11 @@ fn gpu_overlapping_texture_layer_composites_on_gpu() {
         ],
     };
     let config = FrameConfig::new(64, 32, 0, 30.0);
-    let cpu = TinySkiaBackend::headless()
-        .render_frame(&scene, &config)
-        .expect("CPU render failed");
+    let cpu = TinySkiaBackend::headless_with_policy(MediaSecurityPolicy::sandboxed([
+        &std::env::temp_dir(),
+    ]))
+    .render_frame(&scene, &config)
+    .expect("CPU render failed");
     let gpu_image = gpu
         .render_frame(&scene, &config)
         .expect("GPU render failed");
@@ -258,7 +273,9 @@ fn gpu_overlapping_texture_layer_composites_on_gpu() {
 
 #[test]
 fn render_stats_distinguish_gpu_and_cpu_fallback_frames() {
-    let Ok(backend) = WgpuBackend::new() else {
+    let Ok(backend) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping render stats test");
         return;
     };
@@ -303,7 +320,9 @@ fn render_stats_distinguish_gpu_and_cpu_fallback_frames() {
 
 #[test]
 fn gpu_image_matches_cpu_for_fill_and_preserves_draw_order() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping image parity test");
         return;
     };
@@ -338,9 +357,11 @@ fn gpu_image_matches_cpu_for_fill_and_preserves_draw_order() {
         *src = format!("  {src}  ");
     }
     let _third_gpu_image = gpu.render_frame(&equivalent_source_scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::headless()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image = TinySkiaBackend::headless_with_policy(MediaSecurityPolicy::sandboxed([
+        &std::env::temp_dir(),
+    ]))
+    .render_frame(&scene, &config)
+    .unwrap();
     assert_eq!(gpu.gpu_image_cache_len(), 1);
     assert_eq!(gpu.gpu_texture_uploads(), 1);
     assert_eq!(gpu.gpu_texture_upload_bytes(), 4);
@@ -366,7 +387,9 @@ fn gpu_image_matches_cpu_for_fill_and_preserves_draw_order() {
 
 #[test]
 fn gpu_image_fits_match_cpu_for_all_modes() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping image fit parity test");
         return;
     };
@@ -397,9 +420,11 @@ fn gpu_image_fits_match_cpu_for_all_modes() {
             }],
         };
         let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-        let cpu_image = TinySkiaBackend::new()
-            .render_frame(&scene, &config)
-            .unwrap();
+        let cpu_image = TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([
+            &std::env::temp_dir(),
+        ]))
+        .render_frame(&scene, &config)
+        .unwrap();
         let mean_error: f64 = gpu_image
             .pixels()
             .zip(cpu_image.pixels())
@@ -449,9 +474,10 @@ fn gpu_image_fits_match_cpu_for_all_modes() {
         }],
     };
     let gpu_image = gpu.render_frame(&oversized_scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&oversized_scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&oversized_scene, &config)
+            .unwrap();
     let mean_error: f64 = gpu_image
         .pixels()
         .zip(cpu_image.pixels())
@@ -474,7 +500,9 @@ fn gpu_image_fits_match_cpu_for_all_modes() {
 
 #[test]
 fn gpu_image_transform_and_opacity_match_cpu() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping transformed image parity test");
         return;
     };
@@ -516,9 +544,10 @@ fn gpu_image_transform_and_opacity_match_cpu() {
     };
     let config = FrameConfig::new(64, 64, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let mean_error: f64 = gpu_image
         .pixels()
         .zip(cpu_image.pixels())
@@ -540,7 +569,9 @@ fn gpu_image_transform_and_opacity_match_cpu() {
 
 #[test]
 fn gpu_text_uses_gpu_texture_path() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping text GPU test");
         return;
     };
@@ -559,9 +590,10 @@ fn gpu_text_uses_gpu_texture_path() {
     let image = gpu
         .render_frame(&scene, &FrameConfig::new(96, 32, 0, 30.0))
         .unwrap();
-    let cpu = TinySkiaBackend::new()
-        .render_frame(&scene, &FrameConfig::new(96, 32, 0, 30.0))
-        .unwrap();
+    let cpu =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &FrameConfig::new(96, 32, 0, 30.0))
+            .unwrap();
     let generation = gpu.text_atlas_cache_generation();
     let first_upload_bytes = gpu.text_atlas_upload_bytes();
     let same = gpu
@@ -616,7 +648,9 @@ fn gpu_text_uses_gpu_texture_path() {
 
 #[test]
 fn gpu_text_unicode_and_weight_use_distinct_atlas_entries() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping Unicode text test");
         return;
     };
@@ -644,11 +678,15 @@ fn gpu_text_unicode_and_weight_use_distinct_atlas_entries() {
     };
     let config = FrameConfig::new(192, 48, 0, 30.0);
     let regular_gpu = gpu.render_frame(&regular, &config).unwrap();
-    let regular_cpu = TinySkiaBackend::new()
-        .render_frame(&regular, &config)
-        .unwrap();
+    let regular_cpu =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&regular, &config)
+            .unwrap();
     let bold_gpu = gpu.render_frame(&bold, &config).unwrap();
-    let bold_cpu = TinySkiaBackend::new().render_frame(&bold, &config).unwrap();
+    let bold_cpu =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&bold, &config)
+            .unwrap();
     assert!(regular_gpu.pixels().any(|pixel| pixel[3] > 0));
     assert!(bold_gpu.pixels().any(|pixel| pixel[3] > 0));
     for (gpu_image, cpu_image) in [(&regular_gpu, &regular_cpu), (&bold_gpu, &bold_cpu)] {
@@ -672,7 +710,9 @@ fn gpu_text_unicode_and_weight_use_distinct_atlas_entries() {
 
 #[test]
 fn gpu_vignette_filter_matches_cpu_layer_falloff() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping vignette GPU test");
         return;
     };
@@ -704,9 +744,10 @@ fn gpu_vignette_filter_matches_cpu_layer_falloff() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(64, 64, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let center = gpu_image.get_pixel(32, 32);
     let corner = gpu_image.get_pixel(1, 1);
     assert!(center[0] > corner[0]);
@@ -728,7 +769,9 @@ fn gpu_vignette_filter_matches_cpu_layer_falloff() {
 
 #[test]
 fn gpu_multiply_layer_uses_blend_pipeline_and_linear_cpu_reference() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping multiply GPU test");
         return;
     };
@@ -768,9 +811,10 @@ fn gpu_multiply_layer_uses_blend_pipeline_and_linear_cpu_reference() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(16, 16, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let gpu_pixel = gpu_image.get_pixel(8, 8);
     let cpu_pixel = cpu_image.get_pixel(8, 8);
     for channel in 0..3 {
@@ -840,9 +884,10 @@ fn gpu_multiply_layer_uses_blend_pipeline_and_linear_cpu_reference() {
     ]);
     assert!(gpu_supports_scene(&scene));
     let gpu_masked = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_masked = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_masked =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     assert_eq!(gpu.render_stats().cpu_fallback_frames, 0);
     for &(x, y) in &[(4, 8), (11, 8), (8, 8), (1, 1)] {
         for channel in 0..4 {
@@ -861,7 +906,9 @@ fn gpu_multiply_layer_uses_blend_pipeline_and_linear_cpu_reference() {
 
 #[test]
 fn gpu_invert_filter_uses_gpu_layer_path() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping invert GPU test");
         return;
     };
@@ -898,7 +945,9 @@ fn gpu_invert_filter_uses_gpu_layer_path() {
 
 #[test]
 fn gpu_hue_rotate_filter_uses_gpu_layer_path() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping hue rotate GPU test");
         return;
     };
@@ -937,7 +986,9 @@ fn gpu_hue_rotate_filter_uses_gpu_layer_path() {
 
 #[test]
 fn gpu_tint_filter_matches_cpu_for_opaque_rect() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping tint GPU test");
         return;
     };
@@ -968,9 +1019,10 @@ fn gpu_tint_filter_matches_cpu_for_opaque_rect() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(16, 16, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let gpu_pixel = gpu_image.get_pixel(8, 8);
     let cpu_pixel = cpu_image.get_pixel(8, 8);
     for channel in 0..4 {
@@ -986,7 +1038,9 @@ fn gpu_tint_filter_matches_cpu_for_opaque_rect() {
 
 #[test]
 fn gpu_duotone_filter_matches_cpu_for_opaque_rect() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping duotone GPU test");
         return;
     };
@@ -1017,9 +1071,10 @@ fn gpu_duotone_filter_matches_cpu_for_opaque_rect() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(16, 16, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let gpu_pixel = gpu_image.get_pixel(8, 8);
     let cpu_pixel = cpu_image.get_pixel(8, 8);
     for channel in 0..4 {
@@ -1035,7 +1090,9 @@ fn gpu_duotone_filter_matches_cpu_for_opaque_rect() {
 
 #[test]
 fn gpu_color_grading_filter_matches_cpu_for_opaque_rect() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping color grading GPU test");
         return;
     };
@@ -1068,9 +1125,10 @@ fn gpu_color_grading_filter_matches_cpu_for_opaque_rect() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(16, 16, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let gpu_pixel = gpu_image.get_pixel(8, 8);
     let cpu_pixel = cpu_image.get_pixel(8, 8);
     for channel in 0..4 {
@@ -1121,7 +1179,9 @@ fn gpu_color_grading_does_not_claim_mixed_color_filter_order() {
 
 #[test]
 fn gpu_image_multiply_layer_matches_cpu_for_srgb_texture_and_alpha() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping image blend test");
         return;
     };
@@ -1161,9 +1221,10 @@ fn gpu_image_multiply_layer_matches_cpu_for_srgb_texture_and_alpha() {
     assert!(!gpu_supports_scene(&scene));
     let config = FrameConfig::new(16, 16, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let gpu_pixel = gpu_image.get_pixel(8, 8);
     let cpu_pixel = cpu_image.get_pixel(8, 8);
     assert_eq!(gpu_pixel, cpu_pixel);
@@ -1176,7 +1237,9 @@ fn gpu_image_multiply_layer_matches_cpu_for_srgb_texture_and_alpha() {
 
 #[test]
 fn gpu_native_text_stream_reuses_atlas_without_readback() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping native text stream test");
         return;
     };
@@ -1218,7 +1281,9 @@ fn gpu_native_text_stream_reuses_atlas_without_readback() {
 
 #[test]
 fn gpu_lottie_frame_is_uploaded_and_composited_as_a_texture() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping Lottie GPU test");
         return;
     };
@@ -1247,9 +1312,10 @@ fn gpu_lottie_frame_is_uploaded_and_composited_as_a_texture() {
     let image = gpu
         .render_frame(&scene, &FrameConfig::new(32, 32, 0, 30.0))
         .unwrap();
-    let cpu = TinySkiaBackend::new()
-        .render_frame(&scene, &FrameConfig::new(32, 32, 0, 30.0))
-        .unwrap();
+    let cpu =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &FrameConfig::new(32, 32, 0, 30.0))
+            .unwrap();
     assert!(image.pixels().any(|pixel| pixel[3] > 0));
     assert_eq!(gpu.gpu_texture_uploads(), 1);
     let mean_error = image
@@ -1323,9 +1389,10 @@ fn gpu_lottie_frame_is_uploaded_and_composited_as_a_texture() {
     let composited_gpu = gpu
         .render_frame(&composited, &FrameConfig::new(32, 32, 0, 30.0))
         .unwrap();
-    let composited_cpu = TinySkiaBackend::new()
-        .render_frame(&composited, &FrameConfig::new(32, 32, 0, 30.0))
-        .unwrap();
+    let composited_cpu =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&composited, &FrameConfig::new(32, 32, 0, 30.0))
+            .unwrap();
     let composite_error = composited_gpu
         .pixels()
         .zip(composited_cpu.pixels())
@@ -1348,7 +1415,9 @@ fn gpu_lottie_frame_is_uploaded_and_composited_as_a_texture() {
 
 #[test]
 fn gpu_brightness_filter_matches_cpu_for_normal_layer() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping brightness GPU test");
         return;
     };
@@ -1388,9 +1457,10 @@ fn gpu_brightness_filter_matches_cpu_for_normal_layer() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let mean_error: f64 = gpu_image
         .pixels()
         .zip(cpu_image.pixels())
@@ -1411,7 +1481,9 @@ fn gpu_brightness_filter_matches_cpu_for_normal_layer() {
 
 #[test]
 fn gpu_grayscale_and_contrast_filters_match_cpu_for_normal_layer() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping grayscale GPU test");
         return;
     };
@@ -1442,9 +1514,10 @@ fn gpu_grayscale_and_contrast_filters_match_cpu_for_normal_layer() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let gpu_center = gpu_image.get_pixel(16, 16);
     let cpu_center = cpu_image.get_pixel(16, 16);
     assert_eq!(gpu_center[0], gpu_center[1]);
@@ -1457,7 +1530,9 @@ fn gpu_grayscale_and_contrast_filters_match_cpu_for_normal_layer() {
 
 #[test]
 fn gpu_saturation_filter_matches_cpu_for_normal_layer() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping saturation GPU test");
         return;
     };
@@ -1489,11 +1564,12 @@ fn gpu_saturation_filter_matches_cpu_for_normal_layer() {
         .unwrap()
         .get_pixel(16, 16)
         .to_owned();
-    let cpu_center = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap()
-        .get_pixel(16, 16)
-        .to_owned();
+    let cpu_center =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap()
+            .get_pixel(16, 16)
+            .to_owned();
     for channel in 0..3 {
         assert!(
             (i16::from(gpu_center[channel]) - i16::from(cpu_center[channel])).abs() <= 2,
@@ -1504,7 +1580,9 @@ fn gpu_saturation_filter_matches_cpu_for_normal_layer() {
 
 #[test]
 fn gpu_opaque_alpha_rect_mask_matches_cpu_layer_clip() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping alpha mask GPU test");
         return;
     };
@@ -1565,9 +1643,10 @@ fn gpu_opaque_alpha_rect_mask_matches_cpu_layer_clip() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let mean_error: f64 = gpu_image
         .pixels()
         .zip(cpu_image.pixels())
@@ -1590,7 +1669,9 @@ fn gpu_opaque_alpha_rect_mask_matches_cpu_layer_clip() {
 
 #[test]
 fn gpu_grayscale_luminance_rect_mask_matches_cpu() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping luminance mask GPU test");
         return;
     };
@@ -1631,11 +1712,12 @@ fn gpu_grayscale_luminance_rect_mask_matches_cpu() {
         .unwrap()
         .get_pixel(16, 16)
         .to_owned();
-    let cpu_pixel = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap()
-        .get_pixel(16, 16)
-        .to_owned();
+    let cpu_pixel =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap()
+            .get_pixel(16, 16)
+            .to_owned();
     for channel in 0..4 {
         assert!(
             (i16::from(gpu_pixel[channel]) - i16::from(cpu_pixel[channel])).abs() <= 2,
@@ -1646,7 +1728,9 @@ fn gpu_grayscale_luminance_rect_mask_matches_cpu() {
 
 #[test]
 fn gpu_translucent_alpha_rect_mask_matches_cpu() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping translucent mask GPU test");
         return;
     };
@@ -1695,9 +1779,10 @@ fn gpu_translucent_alpha_rect_mask_matches_cpu() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     for channel in 0..4 {
         assert!(
             (i16::from(gpu_image.get_pixel(16, 16)[channel])
@@ -1713,7 +1798,9 @@ fn gpu_translucent_alpha_rect_mask_matches_cpu() {
 
 #[test]
 fn gpu_circle_alpha_mask_matches_cpu_at_stable_pixels() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping circle mask GPU test");
         return;
     };
@@ -1748,9 +1835,10 @@ fn gpu_circle_alpha_mask_matches_cpu_at_stable_pixels() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     for (x, y) in [(16, 16), (1, 1)] {
         assert_eq!(gpu_image.get_pixel(x, y), cpu_image.get_pixel(x, y));
     }
@@ -1758,7 +1846,9 @@ fn gpu_circle_alpha_mask_matches_cpu_at_stable_pixels() {
 
 #[test]
 fn gpu_rounded_rect_alpha_mask_matches_cpu_at_stable_pixels() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping rounded mask GPU test");
         return;
     };
@@ -1795,9 +1885,10 @@ fn gpu_rounded_rect_alpha_mask_matches_cpu_at_stable_pixels() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     for (x, y) in [(16, 16), (1, 1)] {
         assert_eq!(gpu_image.get_pixel(x, y), cpu_image.get_pixel(x, y));
     }
@@ -1805,7 +1896,9 @@ fn gpu_rounded_rect_alpha_mask_matches_cpu_at_stable_pixels() {
 
 #[test]
 fn gpu_layer_clip_rect_matches_cpu_at_stable_pixels() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping layer clip GPU test");
         return;
     };
@@ -1839,16 +1932,19 @@ fn gpu_layer_clip_rect_matches_cpu_at_stable_pixels() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     assert_eq!(gpu_image.get_pixel(16, 16), cpu_image.get_pixel(16, 16));
     assert_eq!(gpu_image.get_pixel(1, 1), cpu_image.get_pixel(1, 1));
 }
 
 #[test]
 fn gpu_path_clip_uses_intermediate_mask_texture() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping path clip GPU test");
         return;
     };
@@ -1878,9 +1974,10 @@ fn gpu_path_clip_uses_intermediate_mask_texture() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     for (x, y) in [(16, 10), (16, 20), (2, 2)] {
         assert_eq!(gpu_image.get_pixel(x, y), cpu_image.get_pixel(x, y));
     }
@@ -1888,7 +1985,9 @@ fn gpu_path_clip_uses_intermediate_mask_texture() {
 
 #[test]
 fn gpu_path_alpha_mask_uses_intermediate_mask_texture() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping path alpha mask GPU test");
         return;
     };
@@ -1942,9 +2041,11 @@ fn gpu_path_alpha_mask_uses_intermediate_mask_texture() {
         *mode = blend_mode;
         assert!(gpu_supports_scene(&scene));
         let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-        let cpu_image = TinySkiaBackend::new()
-            .render_frame(&scene, &config)
-            .unwrap();
+        let cpu_image = TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([
+            &std::env::temp_dir(),
+        ]))
+        .render_frame(&scene, &config)
+        .unwrap();
         for (x, y) in [(16, 10), (16, 20), (2, 2)] {
             for channel in 0..4 {
                 assert!(
@@ -1964,7 +2065,9 @@ fn gpu_path_alpha_mask_uses_intermediate_mask_texture() {
 
 #[test]
 fn gpu_path_stroke_mask_uses_intermediate_mask_texture() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping path stroke mask GPU test");
         return;
     };
@@ -2010,9 +2113,10 @@ fn gpu_path_stroke_mask_uses_intermediate_mask_texture() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     for (x, y) in [(16, 16), (16, 10), (2, 2)] {
         for channel in 0..4 {
             assert!(
@@ -2031,7 +2135,9 @@ fn gpu_path_stroke_mask_uses_intermediate_mask_texture() {
 
 #[test]
 fn gpu_layer_clip_and_mask_use_intersection() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping combined clip/mask GPU test");
         return;
     };
@@ -2074,9 +2180,10 @@ fn gpu_layer_clip_and_mask_use_intersection() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     for (x, y) in [(16, 16), (6, 6), (1, 1)] {
         assert_eq!(gpu_image.get_pixel(x, y), cpu_image.get_pixel(x, y));
     }
@@ -2084,7 +2191,9 @@ fn gpu_layer_clip_and_mask_use_intersection() {
 
 #[test]
 fn gpu_four_stop_linear_alpha_mask_matches_cpu() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping gradient mask GPU test");
         return;
     };
@@ -2152,11 +2261,12 @@ fn gpu_four_stop_linear_alpha_mask_matches_cpu() {
         .unwrap()
         .get_pixel(24, 16)
         .to_owned();
-    let cpu_pixel = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap()
-        .get_pixel(24, 16)
-        .to_owned();
+    let cpu_pixel =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap()
+            .get_pixel(24, 16)
+            .to_owned();
     for channel in 0..4 {
         assert!(
             (i16::from(gpu_pixel[channel]) - i16::from(cpu_pixel[channel])).abs() <= 3,
@@ -2167,7 +2277,9 @@ fn gpu_four_stop_linear_alpha_mask_matches_cpu() {
 
 #[test]
 fn gpu_two_stop_radial_alpha_mask_matches_cpu() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping radial mask GPU test");
         return;
     };
@@ -2209,9 +2321,10 @@ fn gpu_two_stop_radial_alpha_mask_matches_cpu() {
     assert!(gpu_supports_scene(&scene));
     let config = FrameConfig::new(32, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     for (x, y) in [(16, 16), (16, 20), (1, 1)] {
         for channel in 0..4 {
             assert!(
@@ -2229,7 +2342,9 @@ fn gpu_two_stop_radial_alpha_mask_matches_cpu() {
 
 #[test]
 fn gpu_fullscreen_shader_uses_wgpu_shader_runner() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping shader GPU test");
         return;
     };
@@ -2256,7 +2371,9 @@ fn gpu_fullscreen_shader_uses_wgpu_shader_runner() {
 
 #[test]
 fn gpu_shader_layers_preserve_rects_opacity_and_draw_order() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping shader layer test");
         return;
     };
@@ -2300,7 +2417,9 @@ fn gpu_shader_layers_preserve_rects_opacity_and_draw_order() {
 
 #[test]
 fn gpu_shader_region_outside_target_uses_compatibility_path() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping shader bounds test");
         return;
     };
@@ -2326,7 +2445,9 @@ fn gpu_shader_region_outside_target_uses_compatibility_path() {
 
 #[test]
 fn gpu_shader_suffix_composites_after_regular_gpu_scene() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping mixed shader test");
         return;
     };
@@ -2368,7 +2489,9 @@ fn gpu_shader_suffix_composites_after_regular_gpu_scene() {
 
 #[test]
 fn gpu_interleaved_shader_preserves_top_level_draw_order() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping interleaved shader test");
         return;
     };
@@ -2409,7 +2532,10 @@ fn gpu_interleaved_shader_preserves_top_level_draw_order() {
 
 #[test]
 fn gpu_image_cache_obeys_byte_budget_and_lru_eviction() {
-    let Ok(gpu) = WgpuBackend::new().map(|backend| backend.with_image_cache_bytes(4)) else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .map(|backend| backend.with_image_cache_bytes(4))
+    else {
         println!("GPU backend unavailable; skipping image cache eviction test");
         return;
     };
@@ -2444,7 +2570,10 @@ fn gpu_image_cache_obeys_byte_budget_and_lru_eviction() {
 
 #[test]
 fn gpu_image_cache_reconfiguration_trims_existing_textures() {
-    let Ok(gpu) = WgpuBackend::new().map(|backend| backend.with_image_cache_bytes(8)) else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .map(|backend| backend.with_image_cache_bytes(8))
+    else {
         println!("GPU backend unavailable; skipping image cache reconfiguration test");
         return;
     };
@@ -2474,7 +2603,9 @@ fn gpu_image_cache_reconfiguration_trims_existing_textures() {
 fn gpu_gif_frame_uses_texture_path_and_matches_cpu() {
     use image::codecs::gif::{GifEncoder, Repeat};
     use image::{Delay, Frame, RgbaImage};
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping GIF texture test");
         return;
     };
@@ -2511,9 +2642,10 @@ fn gpu_gif_frame_uses_texture_path_and_matches_cpu() {
     };
     let config = FrameConfig::new(16, 16, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let mean_error: f64 = gpu_image
         .pixels()
         .zip(cpu_image.pixels())
@@ -2537,7 +2669,9 @@ fn gpu_gif_frame_uses_texture_path_and_matches_cpu() {
 fn gpu_gif_playback_rate_and_loop_behavior_parity_with_cpu() {
     use image::codecs::gif::{GifEncoder, Repeat};
     use image::{Delay, Frame, RgbaImage};
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping GIF playback rate parity test");
         return;
     };
@@ -2565,7 +2699,8 @@ fn gpu_gif_playback_rate_and_loop_behavior_parity_with_cpu() {
     }
     drop(encoder);
 
-    let cpu = TinySkiaBackend::new();
+    let cpu =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]));
     let test_cases = [
         // (time_sec, playback_rate, loop_behavior, description)
         (
@@ -2649,7 +2784,9 @@ fn gpu_gif_playback_rate_and_loop_behavior_parity_with_cpu() {
 fn gpu_gif_frame_index_cache_hit_across_timestamps() {
     use image::codecs::gif::{GifEncoder, Repeat};
     use image::{Delay, Frame, RgbaImage};
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping GIF cache hit test");
         return;
     };
@@ -2723,7 +2860,9 @@ fn gpu_gif_frame_index_cache_hit_across_timestamps() {
 
 #[test]
 fn gpu_emoji_uses_texture_path_and_matches_cpu() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping emoji texture test");
         return;
     };
@@ -2738,9 +2877,10 @@ fn gpu_emoji_uses_texture_path_and_matches_cpu() {
     };
     let config = FrameConfig::new(48, 48, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     let mean_error: f64 = gpu_image
         .pixels()
         .zip(cpu_image.pixels())
@@ -2768,7 +2908,10 @@ fn gpu_audio_visualizer_uses_texture_path() {
         println!("System audio fixture unavailable; skipping audio visualizer test");
         return;
     }
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) = WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([
+        &std::env::temp_dir(),
+        std::path::Path::new("/System/Library/Sounds"),
+    ])) else {
         println!("GPU backend unavailable; skipping audio visualizer test");
         return;
     };
@@ -2787,9 +2930,12 @@ fn gpu_audio_visualizer_uses_texture_path() {
     };
     let config = FrameConfig::new(64, 32, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image = TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([
+        &std::env::temp_dir(),
+        std::path::Path::new("/System/Library/Sounds"),
+    ]))
+    .render_frame(&scene, &config)
+    .unwrap();
     let mean_error: f64 = gpu_image
         .pixels()
         .zip(cpu_image.pixels())
@@ -2816,7 +2962,9 @@ fn gpu_native_video_stream_delivers_ordered_frames_without_readback() {
         eprintln!("SKIP: GPU native video stream test needs FFmpeg");
         return;
     }
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping GPU native video stream test");
         return;
     };
@@ -2881,7 +3029,9 @@ fn gpu_video_frame_uses_decoded_texture_path() {
         eprintln!("SKIP: GPU video test needs FFmpeg");
         return;
     }
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping GPU video test");
         return;
     };
@@ -2979,9 +3129,10 @@ fn gpu_video_frame_uses_decoded_texture_path() {
     let composited_gpu = gpu
         .render_frame(&composited, &FrameConfig::new(16, 16, 0, 2.0))
         .unwrap();
-    let composited_cpu = TinySkiaBackend::new()
-        .render_frame(&composited, &FrameConfig::new(16, 16, 0, 2.0))
-        .unwrap();
+    let composited_cpu =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&composited, &FrameConfig::new(16, 16, 0, 2.0))
+            .unwrap();
     assert_eq!(
         composited_gpu.get_pixel(8, 8),
         composited_cpu.get_pixel(8, 8)
@@ -3000,7 +3151,9 @@ fn gpu_video_fits_match_cpu_for_all_modes() {
         eprintln!("SKIP: GPU video fit test needs FFmpeg");
         return;
     }
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping GPU video fit test");
         return;
     };
@@ -3049,9 +3202,11 @@ fn gpu_video_fits_match_cpu_for_all_modes() {
             }],
         };
         let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-        let cpu_image = TinySkiaBackend::new()
-            .render_frame(&scene, &config)
-            .unwrap();
+        let cpu_image = TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([
+            &std::env::temp_dir(),
+        ]))
+        .render_frame(&scene, &config)
+        .unwrap();
         let mean_error = gpu_image
             .pixels()
             .zip(cpu_image.pixels())
@@ -3079,7 +3234,9 @@ fn gpu_video_rotation_matches_cpu_display_orientation() {
         eprintln!("SKIP: GPU video rotation test needs FFmpeg");
         return;
     }
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping GPU video rotation test");
         return;
     };
@@ -3129,9 +3286,10 @@ fn gpu_video_rotation_matches_cpu_display_orientation() {
     };
     let config = FrameConfig::new(4, 8, 0, 1.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::new()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image =
+        TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+            .render_frame(&scene, &config)
+            .unwrap();
     for &(x, y) in &[(0, 0), (3, 0), (0, 7), (3, 7)] {
         let gpu_pixel = gpu_image.get_pixel(x, y);
         let cpu_pixel = cpu_image.get_pixel(x, y);
@@ -3151,7 +3309,9 @@ fn gpu_vfr_video_rotation_matches_cpu_across_timeline() {
         eprintln!("SKIP: GPU VFR rotation test needs FFmpeg");
         return;
     }
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping GPU VFR rotation test");
         return;
     };
@@ -3205,9 +3365,11 @@ fn gpu_vfr_video_rotation_matches_cpu_across_timeline() {
             }],
         };
         let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-        let cpu_image = TinySkiaBackend::new()
-            .render_frame(&scene, &config)
-            .unwrap();
+        let cpu_image = TinySkiaBackend::new_with_policy(MediaSecurityPolicy::sandboxed([
+            &std::env::temp_dir(),
+        ]))
+        .render_frame(&scene, &config)
+        .unwrap();
         assert_eq!(gpu_image.dimensions(), (8, 16));
         let mean_error = gpu_image
             .pixels()
@@ -3231,7 +3393,9 @@ fn gpu_vfr_video_rotation_matches_cpu_across_timeline() {
 
 #[test]
 fn gpu_renders_transformed_path_stroke_and_three_stop_gradient() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping render comparison");
         return;
     };
@@ -3287,9 +3451,11 @@ fn gpu_renders_transformed_path_stroke_and_three_stop_gradient() {
     };
     let config = FrameConfig::new(96, 64, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::headless()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image = TinySkiaBackend::headless_with_policy(MediaSecurityPolicy::sandboxed([
+        &std::env::temp_dir(),
+    ]))
+    .render_frame(&scene, &config)
+    .unwrap();
 
     let path_pixel = gpu_image.get_pixel(20, 16);
     assert!(path_pixel[0] > 200 && path_pixel[3] > 200);
@@ -3313,7 +3479,9 @@ fn gpu_renders_transformed_path_stroke_and_three_stop_gradient() {
 
 #[test]
 fn gpu_opacity_layer_preserves_alpha_within_tolerance() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping layer parity test");
         return;
     };
@@ -3340,9 +3508,11 @@ fn gpu_opacity_layer_preserves_alpha_within_tolerance() {
     };
     let config = FrameConfig::new(64, 64, 0, 30.0);
     let gpu_image = gpu.render_frame(&scene, &config).unwrap();
-    let cpu_image = TinySkiaBackend::headless()
-        .render_frame(&scene, &config)
-        .unwrap();
+    let cpu_image = TinySkiaBackend::headless_with_policy(MediaSecurityPolicy::sandboxed([
+        &std::env::temp_dir(),
+    ]))
+    .render_frame(&scene, &config)
+    .unwrap();
     let alpha_error = gpu_image
         .pixels()
         .zip(cpu_image.pixels())
@@ -3373,7 +3543,9 @@ fn gpu_opacity_layer_preserves_alpha_within_tolerance() {
 
 #[test]
 fn gpu_render_stream_pipelined_matches_render_frame() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping render_stream test");
         return;
     };
@@ -3441,7 +3613,9 @@ fn gpu_render_stream_pipelined_matches_render_frame() {
 
 #[test]
 fn gpu_native_frame_sink_skips_cpu_readback() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping GPU-native sink test");
         return;
     };
@@ -3472,7 +3646,9 @@ fn gpu_native_frame_sink_skips_cpu_readback() {
 
 #[test]
 fn gpu_native_stream_delivers_ordered_frames_without_readback() {
-    let Ok(gpu) = WgpuBackend::new() else {
+    let Ok(gpu) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping GPU-native stream test");
         return;
     };
@@ -3644,7 +3820,13 @@ fn path_strokes_groups_and_multistop_gradients_compile_for_gpu() {
         }],
     };
     assert!(gpu_supports_scene(&scene));
-    let commands = compile_scene(&scene, &TinySkiaBackend::headless()).unwrap();
+    let commands = compile_scene(
+        &scene,
+        &TinySkiaBackend::headless_with_policy(MediaSecurityPolicy::sandboxed([
+            &std::env::temp_dir(),
+        ])),
+    )
+    .unwrap();
     assert_eq!(
         commands.len(),
         5,
@@ -3719,7 +3901,13 @@ fn plain_normal_layers_compile_as_gpu_opacity_groups() {
     };
     assert!(gpu_supports_scene(&scene));
     assert!(
-        (compile_scene(&scene, &TinySkiaBackend::headless()).unwrap()[0]
+        (compile_scene(
+            &scene,
+            &TinySkiaBackend::headless_with_policy(MediaSecurityPolicy::sandboxed([
+                &std::env::temp_dir()
+            ]))
+        )
+        .unwrap()[0]
             .instance()
             .params[3]
             - 0.25)
@@ -3891,7 +4079,9 @@ fn invalid_opacity_filter_does_not_enter_gpu_path() {
 
 #[test]
 fn gpu_e2e_profiling_stream_and_summary() {
-    let Ok(backend) = WgpuBackend::new() else {
+    let Ok(backend) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping profiling test");
         return;
     };
@@ -3995,7 +4185,9 @@ fn gpu_e2e_profiling_stream_and_summary() {
 
 #[test]
 fn gpu_e2e_profiling_single_frame() {
-    let Ok(backend) = WgpuBackend::new() else {
+    let Ok(backend) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping profiling test");
         return;
     };
@@ -4033,7 +4225,9 @@ fn gpu_e2e_profiling_single_frame() {
 
 #[test]
 fn gpu_e2e_profiling_disabled_zero_samples() {
-    let Ok(backend) = WgpuBackend::new() else {
+    let Ok(backend) =
+        WgpuBackend::new_with_policy(MediaSecurityPolicy::sandboxed([&std::env::temp_dir()]))
+    else {
         println!("GPU backend unavailable; skipping profiling test");
         return;
     };

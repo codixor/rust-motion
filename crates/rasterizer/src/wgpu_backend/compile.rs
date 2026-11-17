@@ -1610,7 +1610,14 @@ pub(crate) fn gpu_supports_scene(scene: &Scene) -> bool {
     {
         return true;
     }
-    compile_scene(scene, &TinySkiaBackend::new()).is_some()
+    // Test-only classifier: file access must not influence GPU-support
+    // classification, so use a permissive policy here (production defaults
+    // stay fail-closed).
+    compile_scene(
+        scene,
+        &TinySkiaBackend::new_with_policy(crate::security::MediaSecurityPolicy::permissive()),
+    )
+    .is_some()
 }
 
 fn gradient_instance(

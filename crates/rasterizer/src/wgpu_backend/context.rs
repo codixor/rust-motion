@@ -49,7 +49,7 @@ impl GpuContext {
     async fn new_async() -> Result<Self, RasterError> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            ..Default::default()
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
 
         let adapter = instance
@@ -59,11 +59,10 @@ impl GpuContext {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| {
-                RasterError::Init(
-                    "No GPU adapter found. Ensure a GPU is available or use --backend native."
-                        .into(),
-                )
+            .map_err(|e| {
+                RasterError::Init(format!(
+                    "No GPU adapter found. Ensure a GPU is available or use --backend native. ({e})"
+                ))
             })?;
 
         let limits = adapter.limits();
@@ -77,15 +76,14 @@ impl GpuContext {
         }
 
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("rust-motion-rasterizer"),
-                    required_features,
-                    required_limits: limits,
-                    memory_hints: Default::default(),
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("rust-motion-rasterizer"),
+                required_features,
+                required_limits: limits,
+                memory_hints: Default::default(),
+                experimental_features: Default::default(),
+                trace: Default::default(),
+            })
             .await
             .map_err(|e| RasterError::Init(format!("GPU device creation failed: {e}")))?;
 
@@ -175,12 +173,12 @@ impl GpuContext {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("pipeline_layout"),
             bind_group_layouts: &[
-                &globals_layout,
-                &instance_layout,
-                &image_layout,
-                &path_mask_layout,
+                Some(&globals_layout),
+                Some(&instance_layout),
+                Some(&image_layout),
+                Some(&path_mask_layout),
             ],
-            push_constant_ranges: &[],
+            immediate_size: 0,
         });
 
         let make_blend_pipeline = |label: &'static str,
@@ -192,7 +190,7 @@ impl GpuContext {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: if mesh { "vs_mesh" } else { "vs_main" },
+                    entry_point: Some(if mesh { "vs_mesh" } else { "vs_main" }),
                     buffers: if mesh {
                         &[wgpu::VertexBufferLayout {
                             array_stride: std::mem::size_of::<GpuVertex>() as u64,
@@ -206,7 +204,7 @@ impl GpuContext {
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point,
+                    entry_point: Some(entry_point),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: RENDER_FORMAT,
                         blend: Some(blend),
@@ -227,7 +225,7 @@ impl GpuContext {
                     count: SAMPLE_COUNT,
                     ..Default::default()
                 },
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             })
         };
@@ -333,13 +331,13 @@ impl GpuContext {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: RENDER_FORMAT,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -356,7 +354,7 @@ impl GpuContext {
                 count: SAMPLE_COUNT,
                 ..Default::default()
             },
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -365,7 +363,7 @@ impl GpuContext {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_mesh",
+                entry_point: Some("vs_mesh"),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<GpuVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -375,7 +373,7 @@ impl GpuContext {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_solid",
+                entry_point: Some("fs_solid"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: RENDER_FORMAT,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -392,7 +390,7 @@ impl GpuContext {
                 count: SAMPLE_COUNT,
                 ..Default::default()
             },
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -401,13 +399,13 @@ impl GpuContext {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_image",
+                entry_point: Some("fs_image"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: RENDER_FORMAT,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -421,7 +419,7 @@ impl GpuContext {
                 count: SAMPLE_COUNT,
                 ..Default::default()
             },
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -431,13 +429,13 @@ impl GpuContext {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: "vs_main",
+                    entry_point: Some("vs_main"),
                     buffers: &[],
                     compilation_options: Default::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point: "fs_image",
+                    entry_point: Some("fs_image"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: RENDER_FORMAT,
                         blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -448,7 +446,7 @@ impl GpuContext {
                 primitive: wgpu::PrimitiveState::default(),
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             });
 
@@ -457,7 +455,7 @@ impl GpuContext {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_mesh",
+                entry_point: Some("vs_mesh"),
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: std::mem::size_of::<GpuVertex>() as u64,
                     step_mode: wgpu::VertexStepMode::Vertex,
@@ -467,7 +465,7 @@ impl GpuContext {
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_solid",
+                entry_point: Some("fs_solid"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: wgpu::TextureFormat::R8Unorm,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -481,7 +479,7 @@ impl GpuContext {
             },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -490,13 +488,13 @@ impl GpuContext {
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_text",
+                entry_point: Some("fs_text"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: RENDER_FORMAT,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -510,7 +508,7 @@ impl GpuContext {
                 count: SAMPLE_COUNT,
                 ..Default::default()
             },
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
