@@ -12,9 +12,11 @@ fn test_animated_stroke_monotonic_write_on_progress() {
     let config = FrameConfig::new(width, height, 0, 30.0);
 
     // Construct a brush and a 4-point horizontal stroke
-    let mut brush = BrushSettings::default();
-    brush.size = 10.0;
-    brush.color = [1.0, 0.0, 0.0, 1.0]; // Red
+    let brush = BrushSettings {
+        size: 10.0,
+        color: [1.0, 0.0, 0.0, 1.0], // Red
+        ..Default::default()
+    };
 
     let points = vec![
         StrokePoint::new(20.0, 100.0, 0.2),
@@ -27,7 +29,7 @@ fn test_animated_stroke_monotonic_write_on_progress() {
     let count_painted_pixels = |progress: f32| -> usize {
         let scene = Scene {
             nodes: vec![SceneNode::AnimatedStroke {
-                stroke: stroke.clone(),
+                stroke: Box::new(stroke.clone()),
                 progress,
                 color: None,
                 opacity: 1.0,
@@ -37,7 +39,9 @@ fn test_animated_stroke_monotonic_write_on_progress() {
             .render_frame(&scene, &config)
             .expect("render frame failed");
         frame
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .filter(|px| px[3] > 0) // check alpha
             .count()
     };
@@ -78,8 +82,10 @@ fn test_tablet_recorder_to_animated_stroke_rendering() {
     }
 
     assert_eq!(recorder.point_count(), 10);
-    let mut brush = BrushSettings::default();
-    brush.size = 12.0;
+    let brush = BrushSettings {
+        size: 12.0,
+        ..Default::default()
+    };
 
     let stroke = recorder.finish(brush);
     assert_eq!(stroke.points.len(), 10);
@@ -89,7 +95,7 @@ fn test_tablet_recorder_to_animated_stroke_rendering() {
 
     let scene = Scene {
         nodes: vec![SceneNode::AnimatedStroke {
-            stroke,
+            stroke: Box::new(stroke),
             progress: 1.0,
             color: Some(Color::rgba(0, 200, 255, 255)), // Cyan override
             opacity: 0.9,
@@ -100,15 +106,19 @@ fn test_tablet_recorder_to_animated_stroke_rendering() {
         .render_frame(&scene, &config)
         .expect("render failed");
     let has_cyan = frame
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .any(|px| px[0] == 0 && px[1] > 100 && px[2] > 150 && px[3] > 0);
     assert!(has_cyan, "Rendered frame must contain cyan painted stroke");
 }
 
 #[test]
 fn test_animated_stroke_serde_roundtrip() {
-    let mut brush = BrushSettings::default();
-    brush.size = 8.0;
+    let brush = BrushSettings {
+        size: 8.0,
+        ..Default::default()
+    };
     let stroke = Stroke {
         brush,
         points: vec![
@@ -118,7 +128,7 @@ fn test_animated_stroke_serde_roundtrip() {
     };
 
     let node = SceneNode::AnimatedStroke {
-        stroke,
+        stroke: Box::new(stroke),
         progress: 0.65,
         color: Some(Color::rgb(255, 128, 0)),
         opacity: 0.8,

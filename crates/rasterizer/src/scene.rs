@@ -1053,7 +1053,13 @@ pub enum SceneNode {
     /// Natural paint brush animated stroke (write-on animation).
     AnimatedStroke {
         /// Brush stroke data containing brush settings and sampled points.
-        stroke: rust_motion_paint::Stroke,
+        ///
+        /// Boxed to keep [`SceneNode`] small: the stroke carries a full brush
+        /// settings bundle and the sampled point list, which dwarfed every
+        /// other variant. serde treats `Box<T>` transparently, so the
+        /// serialized JSON representation is unchanged (pinned by fixtures in
+        /// `crates/rasterizer/tests/fixtures`).
+        stroke: Box<rust_motion_paint::Stroke>,
         /// Fraction of the stroke completed in `0.0..=1.0` (write-on timeline progress).
         #[serde(default = "default_one")]
         progress: f32,
