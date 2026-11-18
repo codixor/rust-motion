@@ -242,14 +242,14 @@ pub fn parse_frame_header(payload: &[u8]) -> Result<Option<FrameHeader>> {
     let use_q_matrix = r.read_bit().map_err(|_| Error::Truncated)?;
     let mut q_matrix = [[DEFAULT_Q_MATRIX_VAL; 64]; 4];
     if use_q_matrix {
-        for c in 0..chroma.num_comps() {
+        for matrix in q_matrix.iter_mut().take(chroma.num_comps()) {
             for y in 0..8 {
                 for x in 0..8 {
                     let q = r.read_bits(8).map_err(|_| Error::Truncated)? as u8;
                     if q == 0 {
                         return Err(Error::Invalid("q_matrix entry 0 is reserved"));
                     }
-                    q_matrix[c][y * 8 + x] = q;
+                    matrix[y * 8 + x] = q;
                 }
             }
         }

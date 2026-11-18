@@ -402,8 +402,8 @@ impl AudioEffect for ConvolutionReverb {
             // Width: 0 = mono wet, 1 = full decorrelated stereo.
             let m = 0.5 * (wl + wr);
             let (wl, wr) = (m + width * (wl - m), m + width * (wr - m));
-            for ch in 0..nch {
-                self.dry_delay[ch].push(channels[ch][i]);
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                self.dry_delay[ch].push(channel[i]);
                 let dry = self.dry_delay[ch].tap(PART);
                 let wet = if nch == 1 {
                     m
@@ -412,7 +412,7 @@ impl AudioEffect for ConvolutionReverb {
                 } else {
                     wr
                 };
-                channels[ch][i] = dry + mix * (wet * gain - dry);
+                channel[i] = dry + mix * (wet * gain - dry);
             }
         }
     }
@@ -615,8 +615,8 @@ impl AudioEffect for SurroundReverb {
                     self.scratch[0][i] + early * el,
                     self.scratch[1][i] + early * er,
                 ];
-                for c in 0..2 {
-                    w[c] = self.hc[c].lp(ahc, self.lc[c].hp(alc, w[c]));
+                for (c, w_c) in w.iter_mut().enumerate() {
+                    *w_c = self.hc[c].lp(ahc, self.lc[c].hp(alc, *w_c));
                 }
                 let m = 0.5 * (w[0] + w[1]);
                 let (wl, wr) = (m + width * (w[0] - m), m + width * (w[1] - m));

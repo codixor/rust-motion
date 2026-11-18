@@ -699,20 +699,8 @@ fn simplex_3d(x: f32, y: f32, z: f32) -> f32 {
         } else {
             let t2 = t * t;
             let h = (hash_vec3(ix, iy, iz) * 12.0) as i32;
-            let u = if h < 4 {
-                px
-            } else if h == 12 || h == 13 {
-                px
-            } else {
-                py
-            };
-            let v = if h < 2 {
-                py
-            } else if h == 12 || h == 13 {
-                pz
-            } else {
-                pz
-            };
+            let u = if h < 4 || h == 12 || h == 13 { px } else { py };
+            let v = if h < 2 { py } else { pz };
             let grad = (if (h & 1) == 0 { u } else { -u }) + (if (h & 2) == 0 { v } else { -v });
             t2 * t2 * grad
         }

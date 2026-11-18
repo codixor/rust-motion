@@ -173,22 +173,22 @@ pub fn accumulate_subframes(subframes: &[(Pixmap, f32)]) -> Result<Pixmap, Raste
     for (pixmap, weight) in subframes {
         let data = pixmap.data();
         let w_val = *weight;
-        for i in 0..total_pixels {
+        for (i, acc_px) in acc.iter_mut().enumerate() {
             let offset = i * 4;
-            acc[i][0] += data[offset] as f32 * w_val;
-            acc[i][1] += data[offset + 1] as f32 * w_val;
-            acc[i][2] += data[offset + 2] as f32 * w_val;
-            acc[i][3] += data[offset + 3] as f32 * w_val;
+            acc_px[0] += data[offset] as f32 * w_val;
+            acc_px[1] += data[offset + 1] as f32 * w_val;
+            acc_px[2] += data[offset + 2] as f32 * w_val;
+            acc_px[3] += data[offset + 3] as f32 * w_val;
         }
     }
 
     let out_data = output.data_mut();
-    for i in 0..total_pixels {
+    for (i, acc_px) in acc.iter().enumerate() {
         let offset = i * 4;
-        out_data[offset] = acc[i][0].round().clamp(0.0, 255.0) as u8;
-        out_data[offset + 1] = acc[i][1].round().clamp(0.0, 255.0) as u8;
-        out_data[offset + 2] = acc[i][2].round().clamp(0.0, 255.0) as u8;
-        out_data[offset + 3] = acc[i][3].round().clamp(0.0, 255.0) as u8;
+        out_data[offset] = acc_px[0].round().clamp(0.0, 255.0) as u8;
+        out_data[offset + 1] = acc_px[1].round().clamp(0.0, 255.0) as u8;
+        out_data[offset + 2] = acc_px[2].round().clamp(0.0, 255.0) as u8;
+        out_data[offset + 3] = acc_px[3].round().clamp(0.0, 255.0) as u8;
     }
 
     Ok(output)
@@ -258,7 +258,7 @@ pub fn apply_directional_motion_blur(
             for x in 0..w {
                 let mut acc = [0.0f32; 4];
 
-                for i in 0..n {
+                for (i, w_i) in weights.iter().copied().enumerate() {
                     let u = (i as f32 / (n - 1) as f32) - 0.5; // [-0.5, 0.5]
                     let sx = (x as f32 + u * dx_total).round() as i32;
                     let sy = (y as f32 + u * dy_total).round() as i32;
@@ -267,7 +267,6 @@ pub fn apply_directional_motion_blur(
                     let clamped_y = sy.clamp(0, h - 1) as usize;
 
                     let src_idx = (clamped_y * (w as usize) + clamped_x) * 4;
-                    let w_i = weights[i];
 
                     acc[0] += src[src_idx] as f32 * w_i;
                     acc[1] += src[src_idx + 1] as f32 * w_i;

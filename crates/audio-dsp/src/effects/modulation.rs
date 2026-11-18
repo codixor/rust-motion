@@ -93,12 +93,13 @@ impl AudioEffect for ChorusFlanger {
             coef(30.0, self.sr),
             coef(200.0, self.sr),
         );
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let mix = self.mix.tick();
             let width = self.width.tick();
             let inten = self.intensity.tick();
-            for ch in 0..nch {
-                let x = channels[ch][i];
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i];
                 let off = ch as f64 * 0.25;
                 let line = &mut self.lines[ch];
                 let wet = if flanger {
@@ -132,8 +133,9 @@ impl AudioEffect for ChorusFlanger {
                     };
                     w *= 1.0 + trans * boost;
                 }
-                channels[ch][i] = x + mix * (w - x);
+                channel[i] = x + mix * (w - x);
             }
+            i += 1;
             self.lfo.advance(self.speed, self.sr);
         }
     }
@@ -238,15 +240,16 @@ impl AudioEffect for Flanger {
         let phasing = self.pv.v("stereo_phasing") as f64 / 360.0;
         let rate = self.pv.v("rate");
         let shape = |p: f64| if sine { uni_sine(p) } else { uni_tri(p) };
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let (d0, d1, fb, mix) = (
                 self.d0.tick(),
                 self.d1.tick(),
                 self.fb.tick(),
                 self.mix.tick(),
             );
-            for ch in 0..nch {
-                let x = channels[ch][i];
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i];
                 let p = self.lfo.phase(if ch == 1 { phasing } else { 0.0 });
                 let line = &mut self.lines[ch];
                 let y = line.read(d0 + (d1 - d0) * shape(p));
@@ -257,8 +260,9 @@ impl AudioEffect for Flanger {
                     y
                 };
                 line.push(x + fb * y);
-                channels[ch][i] = x + mix * (inv * wet - x);
+                channel[i] = x + mix * (inv * wet - x);
             }
+            i += 1;
             self.lfo.advance(rate, self.sr);
         }
     }
@@ -374,7 +378,8 @@ impl AudioEffect for Phaser {
         let upper = self.pv.v("upper_freq");
         let diff = self.pv.v("phase_diff") as f64 / 360.0;
         let rate = self.pv.v("rate");
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             if self.counter == 0 {
                 for ch in 0..nch {
                     let p = self.lfo.phase(if ch == 1 { diff } else { 0.0 });
@@ -390,8 +395,8 @@ impl AudioEffect for Phaser {
                 self.fb.tick() as f64,
                 self.out.tick(),
             );
-            for ch in 0..nch {
-                let x = channels[ch][i];
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i];
                 let a = self.coefs[ch];
                 let mut y = x as f64 + fb * self.fbs[ch];
                 for st in self.ap[ch].iter_mut().take(stages) {
@@ -399,8 +404,9 @@ impl AudioEffect for Phaser {
                 }
                 self.fbs[ch] = y;
                 let wet = x + inten * (y as f32 - x);
-                channels[ch][i] = (x + mix * (wet - x)) * out;
+                channel[i] = (x + mix * (wet - x)) * out;
             }
+            i += 1;
             self.lfo.advance(rate, self.sr);
         }
     }
@@ -501,7 +507,8 @@ impl AudioEffect for AnalogDelay {
         let mode = self.pv.idx("mode");
         let cutoff = [6500.0, 5000.0, 3200.0][mode.min(2)];
         let a = OnePole::alpha(cutoff, self.sr);
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let (t, dry, wet, fb, drive, spread) = (
                 self.time.tick(),
                 self.dry.tick(),
@@ -510,8 +517,8 @@ impl AudioEffect for AnalogDelay {
                 self.drive.tick(),
                 self.spread.tick(),
             );
-            for ch in 0..nch {
-                let x = channels[ch][i];
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i];
                 let side = match (nch, ch) {
                     (1, _) => 0.0,
                     (_, 0) => -0.25,
@@ -527,8 +534,9 @@ impl AudioEffect for AnalogDelay {
                     _ => c / (1.0 + c.abs()),
                 } / drive;
                 line.push(x + fb * sat);
-                channels[ch][i] = dry * x + wet * y;
+                channel[i] = dry * x + wet * y;
             }
+            i += 1;
         }
     }
 }
@@ -623,7 +631,8 @@ impl AudioEffect for MultitapDelay {
     fn process(&mut self, channels: &mut [&mut [f32]]) {
         let n = block_len(channels);
         let nch = channels.len().min(self.lines.len() / TAPS);
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let mut t = [0.0f32; TAPS];
             let mut fb = [0.0f32; TAPS];
             let mut lv = [0.0f32; TAPS];
@@ -633,8 +642,8 @@ impl AudioEffect for MultitapDelay {
                 lv[k] = self.level[k].tick();
             }
             let mix = self.mix.tick();
-            for ch in 0..nch {
-                let x = channels[ch][i];
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i];
                 let mut wet = 0.0;
                 for k in 0..TAPS {
                     let line = &mut self.lines[ch * TAPS + k];
@@ -642,8 +651,9 @@ impl AudioEffect for MultitapDelay {
                     line.push(x + fb[k] * y);
                     wet += lv[k] * y;
                 }
-                channels[ch][i] = x + mix * (wet - x);
+                channel[i] = x + mix * (wet - x);
             }
+            i += 1;
         }
     }
 }

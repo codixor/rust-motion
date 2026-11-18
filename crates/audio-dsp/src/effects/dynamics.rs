@@ -376,13 +376,14 @@ impl AudioEffect for Limiter {
         let nch = channels.len().min(self.delay.len());
         let dlen = self.delay[0].len();
         let window = (self.look + 1) as u64;
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let g_in = self.in_gain.tick();
             let det_pos = (self.wpos + dlen - self.det_delay) % dlen;
             let out_pos = (self.wpos + 1) % dlen; // oldest = look + det_delay samples ago
             let mut det = 0.0f32;
-            for ch in 0..nch {
-                let x = channels[ch][i] * g_in;
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i] * g_in;
                 self.delay[ch][self.wpos] = x;
                 let aligned = self.delay[ch][det_pos].abs();
                 let tp = if self.true_peak {
@@ -425,9 +426,9 @@ impl AudioEffect for Limiter {
             self.box_ring[self.box_pos] = self.rel_state;
             self.box_pos = (self.box_pos + 1) % self.box_ring.len();
             let g = (self.box_sum / self.box_ring.len() as f64) as f32;
-            for ch in 0..nch {
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
                 let y = self.delay[ch][out_pos] * g;
-                channels[ch][i] = y.clamp(-self.ceiling, self.ceiling);
+                channel[i] = y.clamp(-self.ceiling, self.ceiling);
             }
             self.wpos = (self.wpos + 1) % dlen;
             self.t += 1;
@@ -436,6 +437,7 @@ impl AudioEffect for Limiter {
                 self.box_sum = self.box_ring.iter().map(|&v| v as f64).sum();
             }
             self.gr_meter = lin_to_db(g);
+            i += 1;
         }
     }
 }

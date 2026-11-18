@@ -143,8 +143,8 @@ fn op1a_reads_back() {
     assert_eq!(s0.stored_sample_frames(), 10 * 1920);
     assert_eq!(s0.chunks.len(), 10);
     let pcm = m.read_pcm(&f, sounds[0], 1900, 100).unwrap();
-    for k in 0..100 {
-        assert_eq!(pcm[0][k], (1900 + k) as f32 / 32768.0);
+    for (k, p0) in pcm[0].iter().take(100).enumerate() {
+        assert_eq!(*p0, (1900 + k) as f32 / 32768.0);
         assert_eq!(pcm[1][k], -((1900 + k) as f32) / 32768.0);
     }
     let s1 = &m.tracks[sounds[1]];

@@ -567,11 +567,10 @@ impl MultibandCompressor {
 
     fn apply_params(&mut self, snap: bool) {
         let xo = self.crossovers();
-        for k in 0..3 {
-            self.xo[k].set(xo[k].log2());
+        for (k, xo_k) in self.xo.iter_mut().take(3).enumerate() {
+            xo_k.set(xo[k].log2());
         }
-        for b in 0..MB_BANDS {
-            let ids = MB_IDS[b];
+        for (b, ids) in MB_IDS.iter().enumerate() {
             self.att[b] = coef(self.pv.v(ids[2]), self.sr);
             self.rel[b] = coef(self.pv.v(ids[3]), self.sr);
             self.band_gain[b].set(self.band_level(b));
@@ -656,7 +655,8 @@ impl AudioEffect for MultibandCompressor {
             byp[b] = self.pv.on(MB_IDS[b][6]);
         }
         let mut bands = [[0.0f64; MB_BANDS]; 8];
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             if self.counter == 0 && self.xo.iter().any(Smoothed::is_smoothing) {
                 self.update_xo();
             }
@@ -665,8 +665,8 @@ impl AudioEffect for MultibandCompressor {
                 x.tick();
             }
             let mut bg = [0.0f32; MB_BANDS];
-            for b in 0..MB_BANDS {
-                bg[b] = self.band_gain[b].tick();
+            for (b, bg_b) in bg.iter_mut().enumerate() {
+                *bg_b = self.band_gain[b].tick();
             }
             let o = self.out.tick();
             for ch in 0..nch.min(8) {
@@ -721,6 +721,7 @@ impl AudioEffect for MultibandCompressor {
             for ch in 0..nch.min(8) {
                 channels[ch][i] = ys[ch];
             }
+            i += 1;
         }
     }
 }

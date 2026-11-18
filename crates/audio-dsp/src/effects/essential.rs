@@ -158,14 +158,15 @@ impl AudioEffect for DeEsser {
     fn process(&mut self, channels: &mut [&mut [f32]]) {
         let n = block_len(channels);
         let nch = channels.len().min(self.hp.len());
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             if self.freq.is_smoothing() {
                 self.freq.tick();
                 self.design();
             }
             let (mut pb, mut pf) = (0.0f64, 0.0f64);
-            for ch in 0..nch {
-                let x = channels[ch][i] as f64;
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i] as f64;
                 let b = self.hp[ch].tick(&self.coeffs, x);
                 pb += b * b;
                 pf += x * x;
@@ -188,10 +189,11 @@ impl AudioEffect for DeEsser {
             {
                 self.design_shelf();
             }
-            for ch in 0..nch {
-                let x = channels[ch][i] as f64;
-                channels[ch][i] = self.shelf[ch].tick(&self.shelf_coeffs, x) as f32;
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i] as f64;
+                channel[i] = self.shelf[ch].tick(&self.shelf_coeffs, x) as f32;
             }
+            i += 1;
         }
         self.gr_meter = self.gr as f32;
     }
@@ -311,7 +313,7 @@ impl AudioEffect for DeReverb {
         let (decay, beta, floor, alpha) = (self.decay, self.beta, self.floor, self.alpha);
         let scale = 1.0 / (n as f32 * 2.0);
         let bins = n / 2 + 1;
-        for ch in 0..nch {
+        for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
             let st = &mut self.state[ch];
             let spec = &mut self.spec;
             let sg = &mut self.smoothed_gains;
@@ -339,18 +341,18 @@ impl AudioEffect for DeReverb {
                 }
                 st.pos = (st.pos + 1) % delay;
                 st.frames = st.frames.saturating_add(1);
-                for k in 0..bins {
+                for (k, sg_k) in sg.iter_mut().take(bins).enumerate() {
                     let a = st.gains[k.saturating_sub(1)];
                     let c = st.gains[(k + 1).min(bins - 1)];
-                    sg[k] = 0.25 * a + 0.5 * st.gains[k] + 0.25 * c;
+                    *sg_k = 0.25 * a + 0.5 * st.gains[k] + 0.25 * c;
                 }
-                for k in 0..bins {
-                    spec.re[k] *= sg[k];
-                    spec.im[k] *= sg[k];
+                for (k, &sg_k) in sg.iter().take(bins).enumerate() {
+                    spec.re[k] *= sg_k;
+                    spec.im[k] *= sg_k;
                 }
                 spec.synthesise_add(out, scale);
             };
-            for v in channels[ch][..len].iter_mut() {
+            for v in channel[..len].iter_mut() {
                 *v = self.stft[ch].tick(*v, hop, &mut frame);
             }
         }
@@ -488,7 +490,8 @@ impl AudioEffect for SpeechEnhance {
         let n = block_len(channels);
         let nch = channels.len().min(self.filters.len()).min(8);
         let mut wet = [0.0f64; 8];
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let mut sq = 0.0f64;
             for ch in 0..nch {
                 let mut x = channels[ch][i] as f64;
@@ -526,6 +529,7 @@ impl AudioEffect for SpeechEnhance {
                 let dry = channels[ch][i] as f64;
                 channels[ch][i] = (dry + m * (w * g - dry)) as f32;
             }
+            i += 1;
         }
     }
 }

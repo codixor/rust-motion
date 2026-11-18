@@ -200,9 +200,10 @@ impl AudioEffect for PitchShifter {
         let expect = 2.0 * PI * hop as f32 / n as f32;
         // Sample-major so every channel hits its frame boundary on the same sample and the ratio
         // glides identically for all channels (once per frame).
-        for i in 0..len {
+        let mut i = 0;
+        while i < len {
             let mut frame_done = false;
-            for ch in 0..nch {
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
                 let st = &mut self.state[ch];
                 let spec = &mut self.spec;
                 let sc = &mut self.scratch;
@@ -213,7 +214,7 @@ impl AudioEffect for PitchShifter {
                     spec.synthesise_add(out, scale);
                     frame_done = true;
                 };
-                channels[ch][i] = self.stft[ch].tick(channels[ch][i], hop, &mut frame);
+                channel[i] = self.stft[ch].tick(channel[i], hop, &mut frame);
             }
             if frame_done {
                 self.ratio += (self.target_ratio - self.ratio) * 0.5;
@@ -221,6 +222,7 @@ impl AudioEffect for PitchShifter {
                     self.ratio = self.target_ratio;
                 }
             }
+            i += 1;
         }
     }
 }

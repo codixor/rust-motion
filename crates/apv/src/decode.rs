@@ -296,33 +296,39 @@ fn decode_pbu_planes(
     for tile in &decoded_tiles {
         copy_tile_comp(
             &tile.comps[0],
-            tile.w_luma as usize,
-            tile.h_luma as usize,
-            tile.x0 as usize,
-            tile.y0 as usize,
+            (tile.w_luma as usize, tile.h_luma as usize),
+            (tile.x0 as usize, tile.y0 as usize),
             &mut out.y,
-            w,
-            h,
+            (w, h),
         );
         if hdr.chroma.num_comps() >= 3 {
             let tw_c = (tile.w_luma as usize) / sub_w;
             let th_c = (tile.h_luma as usize) / sub_h;
             let tx_c = (tile.x0 as usize) / sub_w;
             let ty_c = (tile.y0 as usize) / sub_h;
-            copy_tile_comp(&tile.comps[1], tw_c, th_c, tx_c, ty_c, &mut out.cb, cw, ch);
-            copy_tile_comp(&tile.comps[2], tw_c, th_c, tx_c, ty_c, &mut out.cr, cw, ch);
+            copy_tile_comp(
+                &tile.comps[1],
+                (tw_c, th_c),
+                (tx_c, ty_c),
+                &mut out.cb,
+                (cw, ch),
+            );
+            copy_tile_comp(
+                &tile.comps[2],
+                (tw_c, th_c),
+                (tx_c, ty_c),
+                &mut out.cr,
+                (cw, ch),
+            );
         }
         if hdr.chroma == ChromaFormat::Yuv4444 {
             if let Some(alpha) = out.alpha.as_mut() {
                 copy_tile_comp(
                     &tile.comps[3],
-                    tile.w_luma as usize,
-                    tile.h_luma as usize,
-                    tile.x0 as usize,
-                    tile.y0 as usize,
+                    (tile.w_luma as usize, tile.h_luma as usize),
+                    (tile.x0 as usize, tile.y0 as usize),
                     alpha,
-                    w,
-                    h,
+                    (w, h),
                 );
             }
         }
@@ -333,13 +339,10 @@ fn decode_pbu_planes(
 
 fn copy_tile_comp(
     src: &[u16],
-    tw: usize,
-    th: usize,
-    tx: usize,
-    ty: usize,
+    (tw, th): (usize, usize),
+    (tx, ty): (usize, usize),
     dst: &mut [u16],
-    fw: usize,
-    fh: usize,
+    (fw, fh): (usize, usize),
 ) {
     if tx >= fw || ty >= fh {
         return;
@@ -377,7 +380,7 @@ fn decode_single_tile(
     }
 
     let mut tile_data_size = [0usize; 4];
-    for c in 0..num_comps {
+    for (c, slot) in tile_data_size.iter_mut().take(num_comps).enumerate() {
         let off = 4 + c * 4;
         let sz = u32::from_be_bytes([
             tile_bytes[off],
@@ -388,7 +391,7 @@ fn decode_single_tile(
         if sz == 0 {
             return Err(Error::CorruptTile(tile_idx));
         }
-        tile_data_size[c] = sz;
+        *slot = sz;
     }
 
     let max_tile_qp = (51 + hdr.qp_bd_offset()) as u8;
@@ -417,9 +420,9 @@ fn decode_single_tile(
 
     let mut comp_off = tile_header_size;
     let mut comp_slices: Vec<(usize, &[u8])> = Vec::with_capacity(num_comps);
-    for c in 0..num_comps {
+    for (c, data_size) in tile_data_size.iter().take(num_comps).enumerate() {
         let comp_end = comp_off
-            .checked_add(tile_data_size[c])
+            .checked_add(*data_size)
             .ok_or(Error::CorruptTile(tile_idx))?;
         let comp_bytes = tile_bytes
             .get(comp_off..comp_end)

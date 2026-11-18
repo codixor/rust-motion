@@ -12,7 +12,7 @@ use super::color_blend::{apply_opacity, composite_custom_psd_blend, tiny_skia_bl
 use super::filters::{apply_filter, make_shadow};
 use super::media::{draw_media, draw_video_media};
 use super::shapes::{build_circle, build_rounded_rect, svgpath_to_tiny_skia};
-use super::visualizer::render_audio_visualizer;
+use super::visualizer::{render_audio_visualizer, AudioVisualizerParams};
 use super::RenderResources;
 
 pub(crate) fn render_nodes(
@@ -412,14 +412,13 @@ pub(crate) fn render_node(
                     pixmap,
                     resources,
                     src,
-                    *x,
-                    *y,
-                    *width,
-                    *height,
-                    color.with_opacity(eff_opacity),
-                    style,
-                    *time,
-                    transform,
+                    AudioVisualizerParams {
+                        bounds: (*x, *y, *width, *height),
+                        color: color.with_opacity(eff_opacity),
+                        style,
+                        time: *time,
+                        transform,
+                    },
                 )?;
             }
         }

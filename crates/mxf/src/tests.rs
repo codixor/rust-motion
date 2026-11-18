@@ -262,13 +262,13 @@ fn build(n: usize, pic: impl Fn(usize) -> Vec<u8>, to: &[i8], flags: &[u8]) -> V
     f.extend_from_slice(&partition(4, footer_at, 0, 2, 0));
     let mut ix = LocalSet::new(6);
     let mut entries = Vec::new();
-    for i in 0..n {
+    for (i, off) in offsets.iter().take(n).enumerate() {
         let mut e = vec![
             to.get(i).copied().unwrap_or(0) as u8,
             0,
             flags.get(i).copied().unwrap_or(0),
         ];
-        e.extend_from_slice(&offsets[i].to_be_bytes());
+        e.extend_from_slice(&off.to_be_bytes());
         entries.push(e);
     }
     let refs: Vec<&[u8]> = entries.iter().map(Vec::as_slice).collect();
@@ -356,8 +356,8 @@ fn opens_synthetic_op1a() {
     assert_eq!(s.stored_sample_frames(), 7 * 1920);
     assert_eq!(s.samples_per_edit_unit(), (48000, 25));
     let pcm = m.read_pcm(&f, a, 1900, 50).unwrap();
-    for k in 0..50 {
-        assert_eq!(pcm[0][k], (1900 + k) as f32 / 32768.0);
+    for (k, p0) in pcm[0].iter().take(50).enumerate() {
+        assert_eq!(*p0, (1900 + k) as f32 / 32768.0);
         assert_eq!(pcm[1][k], -((1900 + k) as f32) / 32768.0);
     }
     // past the end: zeros

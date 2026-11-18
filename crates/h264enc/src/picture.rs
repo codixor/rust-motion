@@ -230,14 +230,14 @@ impl RefPic {
     /// Luma prediction of a w x h block at picture position (x, y) displaced by `mv` (quarter samples).
     pub fn mc_luma(
         &self,
-        x: usize,
-        y: usize,
+        pos: (usize, usize),
         mv: Mv,
-        w: usize,
-        h: usize,
+        dims: (usize, usize),
         out: &mut [u8],
         ostride: usize,
     ) {
+        let (x, y) = pos;
+        let (w, h) = dims;
         let xi = x as isize + (mv.x as isize >> 2);
         let yi = y as isize + (mv.y as isize >> 2);
         let q = ((mv.y & 3) * 4 + (mv.x & 3)) as usize;
@@ -267,15 +267,15 @@ impl RefPic {
     /// Chroma prediction (both planes) of a w x h chroma block at chroma position (x, y); mv in luma quarter units.
     pub fn mc_chroma(
         &self,
-        x: usize,
-        y: usize,
+        pos: (usize, usize),
         mv: Mv,
-        w: usize,
-        h: usize,
+        dims: (usize, usize),
         out_u: &mut [u8],
         out_v: &mut [u8],
         ostride: usize,
     ) {
+        let (x, y) = pos;
+        let (w, h) = dims;
         let xi = x as isize + (mv.x as isize >> 3);
         let yi = y as isize + (mv.y as isize >> 3);
         let fx = (mv.x & 7) as u32;

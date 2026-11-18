@@ -487,12 +487,13 @@ mod tests {
                 lfe: 0.0,
             };
             let m = pan51_matrix(l, p);
-            for i in 0..l.channels() {
-                if l == Layout::Surround51 && i == LFE {
-                    continue;
+            let mut i = 0;
+            while i < l.channels() {
+                if !(l == Layout::Surround51 && i == LFE) {
+                    let pw: f32 = (0..6).map(|o| m[o][i] * m[o][i]).sum();
+                    assert!((pw - 1.0).abs() < 1e-5);
                 }
-                let pw: f32 = (0..6).map(|o| m[o][i] * m[o][i]).sum();
-                assert!((pw - 1.0).abs() < 1e-5);
+                i += 1;
             }
         }
         // puck hard rear-left: 5.1 front channels collapse towards the rear left
