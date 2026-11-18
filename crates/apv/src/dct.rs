@@ -5,36 +5,25 @@ use crate::tables::LEVEL_SCALE;
 /// 1D 8-point inverse transform using the RFC 9924 §6.3.2.3 even/odd butterfly decomposition,
 /// shifting each output by `(sum + round) >> shift`.
 #[inline(always)]
-fn idct_1d(
-    x0: i32,
-    x1: i32,
-    x2: i32,
-    x3: i32,
-    x4: i32,
-    x5: i32,
-    x6: i32,
-    x7: i32,
-    round: i32,
-    shift: u32,
-) -> [i32; 8] {
-    if (x1 | x2 | x3 | x4 | x5 | x6 | x7) == 0 {
-        let v = (x0 * 64 + round) >> shift;
+fn idct_1d(x: [i32; 8], round: i32, shift: u32) -> [i32; 8] {
+    if (x[1] | x[2] | x[3] | x[4] | x[5] | x[6] | x[7]) == 0 {
+        let v = (x[0] * 64 + round) >> shift;
         return [v; 8];
     }
-    let e0 = 64 * (x0 + x4);
-    let e1 = 64 * (x0 - x4);
-    let e2 = 35 * x2 - 84 * x6;
-    let e3 = 84 * x2 + 35 * x6;
+    let e0 = 64 * (x[0] + x[4]);
+    let e1 = 64 * (x[0] - x[4]);
+    let e2 = 35 * x[2] - 84 * x[6];
+    let e3 = 84 * x[2] + 35 * x[6];
 
     let even0 = e0 + e3;
     let even1 = e1 + e2;
     let even2 = e1 - e2;
     let even3 = e0 - e3;
 
-    let odd0 = 89 * x1 + 75 * x3 + 50 * x5 + 18 * x7;
-    let odd1 = 75 * x1 - 18 * x3 - 89 * x5 - 50 * x7;
-    let odd2 = 50 * x1 - 89 * x3 + 18 * x5 + 75 * x7;
-    let odd3 = 18 * x1 - 50 * x3 + 75 * x5 - 89 * x7;
+    let odd0 = 89 * x[1] + 75 * x[3] + 50 * x[5] + 18 * x[7];
+    let odd1 = 75 * x[1] - 18 * x[3] - 89 * x[5] - 50 * x[7];
+    let odd2 = 50 * x[1] - 89 * x[3] + 18 * x[5] + 75 * x[7];
+    let odd3 = 18 * x[1] - 50 * x[3] + 75 * x[5] - 89 * x[7];
 
     [
         (even0 + odd0 + round) >> shift,
@@ -111,14 +100,7 @@ pub fn scale_and_idct8x8(
     let mut g = [0i32; 64];
     for x in 0..8 {
         let col = idct_1d(
-            d[x],
-            d[8 + x],
-            d[16 + x],
-            d[24 + x],
-            d[32 + x],
-            d[40 + x],
-            d[48 + x],
-            d[56 + x],
+            [d[x], d[8 + x], d[16 + x], d[24 + x], d[32 + x], d[40 + x], d[48 + x], d[56 + x]],
             64,
             7,
         );
@@ -135,9 +117,7 @@ pub fn scale_and_idct8x8(
 
     for y in 0..8 {
         let r = &g[y * 8..y * 8 + 8];
-        let row = idct_1d(
-            r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], round, bd_shift,
-        );
+        let row = idct_1d([r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]], round, bd_shift);
         for i in 0..8 {
             out[y * 8 + i] = (row[i] + mid).clamp(0, max_val) as u16;
         }
@@ -146,26 +126,15 @@ pub fn scale_and_idct8x8(
 
 /// 1D 8-point forward butterfly transform matching `TRANS_MATRIX`.
 #[inline(always)]
-fn fdct_1d(
-    x0: i32,
-    x1: i32,
-    x2: i32,
-    x3: i32,
-    x4: i32,
-    x5: i32,
-    x6: i32,
-    x7: i32,
-    round: i32,
-    shift: u32,
-) -> [i32; 8] {
-    let s0 = x0 + x7;
-    let d0 = x0 - x7;
-    let s1 = x1 + x6;
-    let d1 = x1 - x6;
-    let s2 = x2 + x5;
-    let d2 = x2 - x5;
-    let s3 = x3 + x4;
-    let d3 = x3 - x4;
+fn fdct_1d(x: [i32; 8], round: i32, shift: u32) -> [i32; 8] {
+    let s0 = x[0] + x[7];
+    let d0 = x[0] - x[7];
+    let s1 = x[1] + x[6];
+    let d1 = x[1] - x[6];
+    let s2 = x[2] + x[5];
+    let d2 = x[2] - x[5];
+    let s3 = x[3] + x[4];
+    let d3 = x[3] - x[4];
 
     let es0 = s0 + s3;
     let ed0 = s0 - s3;
@@ -197,14 +166,16 @@ pub fn fdct8x8(samples: &[u16; 64], bit_depth: u8) -> [i32; 64] {
     for y in 0..8 {
         let s = &samples[y * 8..y * 8 + 8];
         let row = fdct_1d(
-            s[0] as i32 - mid,
-            s[1] as i32 - mid,
-            s[2] as i32 - mid,
-            s[3] as i32 - mid,
-            s[4] as i32 - mid,
-            s[5] as i32 - mid,
-            s[6] as i32 - mid,
-            s[7] as i32 - mid,
+            [
+                s[0] as i32 - mid,
+                s[1] as i32 - mid,
+                s[2] as i32 - mid,
+                s[3] as i32 - mid,
+                s[4] as i32 - mid,
+                s[5] as i32 - mid,
+                s[6] as i32 - mid,
+                s[7] as i32 - mid,
+            ],
             add1,
             shift1,
         );
@@ -215,14 +186,7 @@ pub fn fdct8x8(samples: &[u16; 64], bit_depth: u8) -> [i32; 64] {
     let mut f = [0i32; 64];
     for u in 0..8 {
         let col = fdct_1d(
-            t[u],
-            t[8 + u],
-            t[16 + u],
-            t[24 + u],
-            t[32 + u],
-            t[40 + u],
-            t[48 + u],
-            t[56 + u],
+            [t[u], t[8 + u], t[16 + u], t[24 + u], t[32 + u], t[40 + u], t[48 + u], t[56 + u]],
             128,
             8,
         );

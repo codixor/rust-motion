@@ -202,8 +202,8 @@ impl Encoder {
         row_starts.push(h_mbs * 16);
 
         if let Some(qm) = &cfg.q_matrix {
-            for c in 0..cfg.chroma.num_comps() {
-                if qm[c].contains(&0) {
+            for row in qm.iter().take(cfg.chroma.num_comps()) {
+                if row.contains(&0) {
                     return Err(Error::Input(
                         "q_matrix entries must be non-zero (1..=255)".into(),
                     ));
