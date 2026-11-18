@@ -142,7 +142,7 @@ pub fn apply_film_emulation_with(pixmap: &mut Pixmap, settings: &FilmEmulation) 
 /// [`apply_film_emulation_with`]. New callers should construct a
 /// [`FilmEmulation`] and call [`apply_film_emulation_with`] instead.
 #[deprecated(
-    since = "1.1.0",
+    since = "1.1.1",
     note = "use `apply_film_emulation_with` with a `FilmEmulation` settings struct instead"
 )]
 // The nine-argument shape is inherent to this legacy compatibility shim:
