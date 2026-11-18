@@ -313,11 +313,14 @@ struct Element {
     truncated: bool,
 }
 
+/// Per-partition header metadata: partition index, primer and (key, value) sets.
+type HeaderMetadata = (usize, Primer, Vec<(Ul, Vec<u8>)>);
+
 struct WalkResult {
     run_in: u64,
     partitions: Vec<Partition>,
     /// Header metadata per partition index: (primer, sets as (key, value)).
-    metadata: Vec<(usize, Primer, Vec<(Ul, Vec<u8>)>)>,
+    metadata: Vec<HeaderMetadata>,
     index: Vec<IndexSegment>,
     elements: Vec<Element>,
     warnings: Vec<String>,
@@ -1179,7 +1182,7 @@ fn build_pictures(
     if has_to {
         let mut pts = vec![i64::MIN; n];
         let mut ok = true;
-        for d in 0..n {
+        for (d, slot) in display.iter_mut().enumerate() {
             let to = entries
                 .get(&d)
                 .copied()
@@ -1190,7 +1193,7 @@ fn build_pictures(
                 break;
             }
             pts[s as usize] = d as i64;
-            display[d] = s as usize;
+            *slot = s as usize;
         }
         if ok {
             t.temporal_offsets = true;

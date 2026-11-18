@@ -34,6 +34,7 @@ use std::io::{self, Seek, SeekFrom, Write};
 use crate::Rational;
 use labels::*;
 
+
 /// A SMPTE ST 330 basic UMID (32 bytes): package identifiers.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Umid(pub [u8; 32]);
@@ -1224,7 +1225,7 @@ impl<W: Write + Seek> MxfWriter<W> {
         &self,
         out: &mut Vec<u8>,
         entries: &[Entry],
-        segment: &mut dyn FnMut(&mut Vec<u8>, &mut dyn FnMut(&mut Set)),
+        segment: &mut impl FnMut(&mut Vec<u8>, &mut dyn FnMut(&mut Set)),
     ) {
         let n = entries.len();
         let nslices = entries.iter().map(|e| e.slices.len()).max().unwrap_or(0);
