@@ -118,13 +118,13 @@ impl Matrix4 {
     /// Multiplies this matrix with another: `self * rhs`.
     pub fn mul(&self, rhs: &Self) -> Self {
         let mut out = [[0.0f32; 4]; 4];
-        for i in 0..4 {
-            for j in 0..4 {
+        for (i, out_row) in out.iter_mut().enumerate() {
+            for (j, out_cell) in out_row.iter_mut().enumerate() {
                 let mut sum = 0.0f32;
                 for k in 0..4 {
                     sum += self.m[i][k] * rhs.m[k][j];
                 }
-                out[i][j] = sum;
+                *out_cell = sum;
             }
         }
         Self { m: out }

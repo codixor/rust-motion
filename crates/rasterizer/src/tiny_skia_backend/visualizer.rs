@@ -6,19 +6,26 @@ use crate::backend::RasterError;
 use crate::scene::Color;
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
+/// Render parameters for an audio visualizer overlay.
+pub(crate) struct AudioVisualizerParams<'a> {
+    pub bounds: (f32, f32, f32, f32),
+    pub color: Color,
+    pub style: &'a crate::scene::VisualizerStyle,
+    pub time: f64,
+    pub transform: Transform,
+}
+
 pub(crate) fn render_audio_visualizer(
     pixmap: &mut Pixmap,
     resources: &RenderResources<'_>,
     src: &str,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-    color: Color,
-    style: &crate::scene::VisualizerStyle,
-    time: f64,
-    transform: Transform,
+    params: AudioVisualizerParams<'_>,
 ) -> Result<(), RasterError> {
+    let (x, y, w, h) = params.bounds;
+    let color = params.color;
+    let style = params.style;
+    let time = params.time;
+    let transform = params.transform;
     resources.security.validate_path(src)?;
     let mut paint = Paint::default();
     paint.set_color_rgba8(color.r, color.g, color.b, color.a);

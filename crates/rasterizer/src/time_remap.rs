@@ -178,8 +178,8 @@ impl OpticalFlowEngine {
         let b = block_size.max(4);
         let r = search_radius.clamp(1, 32) as i32;
 
-        let grid_w = (width + b - 1) / b;
-        let grid_h = (height + b - 1) / b;
+        let grid_w = width.div_ceil(b);
+        let grid_h = height.div_ceil(b);
         let mut flow = vec![(0.0f32, 0.0f32); grid_w * grid_h];
 
         let p_data = prev.data();
@@ -191,7 +191,7 @@ impl OpticalFlowEngine {
             .for_each(|(gy, row)| {
                 let cy = (gy * b + b / 2) as i32;
 
-                for gx in 0..grid_w {
+                for (gx, flow_slot) in row.iter_mut().enumerate() {
                     let cx = (gx * b + b / 2) as i32;
                     let mut best_sad = u64::MAX;
                     let mut best_dx = 0;
@@ -247,7 +247,7 @@ impl OpticalFlowEngine {
                         }
                     }
 
-                    row[gx] = (best_dx as f32, best_dy as f32);
+                    *flow_slot = (best_dx as f32, best_dy as f32);
                 }
             });
 

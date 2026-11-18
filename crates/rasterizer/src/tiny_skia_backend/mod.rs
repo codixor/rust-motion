@@ -16,7 +16,7 @@ pub(crate) use render_node::render_nodes;
 #[cfg(feature = "gpu")]
 pub(crate) use shapes::svgpath_to_tiny_skia;
 #[cfg(feature = "gpu")]
-pub(crate) use visualizer::render_audio_visualizer;
+pub(crate) use visualizer::{render_audio_visualizer, AudioVisualizerParams};
 
 use crate::backend::{FrameConfig, FrameSink, RasterError, RasterizerBackend};
 use crate::font::FontCache;
@@ -200,14 +200,13 @@ impl TinySkiaBackend {
             &mut pixmap,
             &resources,
             src,
-            0.0,
-            0.0,
-            width.max(1) as f32,
-            height.max(1) as f32,
-            color,
-            style,
-            time,
-            Transform::identity(),
+            AudioVisualizerParams {
+                bounds: (0.0, 0.0, width.max(1) as f32, height.max(1) as f32),
+                color,
+                style,
+                time,
+                transform: Transform::identity(),
+            },
         )?;
         let image = RgbaImage::from_raw(width.max(1), height.max(1), pixmap.take())
             .ok_or_else(|| RasterError::ImageEncode("invalid visualizer pixels".into()))?;

@@ -115,8 +115,7 @@ impl Tensor3D {
         }
 
         let mut out = Self::zeros(out_channels, self.height, self.width);
-        for oc in 0..out_channels {
-            let b = bias[oc];
+        for (oc, &b) in bias.iter().take(out_channels).enumerate() {
             let pw_off = oc * self.channels;
             for y in 0..self.height {
                 for x in 0..self.width {
@@ -195,7 +194,7 @@ pub fn parse_onnx_model_checked(bytes: &[u8]) -> Result<OnnxModelSummary, String
             2 => {
                 let len = read_varint(bytes, &mut pos).ok_or("Truncated length-delimited field")?
                     as usize;
-                if pos.checked_add(len).map_or(true, |end| end > bytes.len()) {
+                if pos.checked_add(len).is_none_or(|end| end > bytes.len()) {
                     return Err("Length-delimited field exceeds buffer bounds".into());
                 }
                 let payload = &bytes[pos..pos + len];
@@ -220,10 +219,8 @@ pub fn parse_onnx_model_checked(bytes: &[u8]) -> Result<OnnxModelSummary, String
                                         continue;
                                     }
                                 }
-                            } else if gw == 0 {
-                                if read_varint(payload, &mut gpos).is_some() {
-                                    continue;
-                                }
+                            } else if gw == 0 && read_varint(payload, &mut gpos).is_some() {
+                                continue;
                             }
                         }
                         break;
@@ -517,7 +514,8 @@ pub fn apply_privacy_face_mask(
                                 cnt += 1;
                             }
                         }
-                        if cnt > 0 {
+                        if let Some(nz_cnt) = std::num::NonZeroU32::new(cnt) {
+                            let cnt = nz_cnt.get();
                             let avg = PremultipliedColorU8::from_rgba(
                                 (sr / cnt) as u8,
                                 (sg / cnt) as u8,
