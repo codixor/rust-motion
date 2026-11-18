@@ -16,6 +16,11 @@ use filmcraft_bitstream::{annexb_nals, length_prefixed_nals, unescape_rbsp};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
+/// Cached (PPS, SPS, layout, scaling-list) tuple for a decoded picture.
+type LayoutCacheEntry = (Arc<Pps>, Arc<Sps>, Arc<Layout>, Option<Arc<Vec<Vec<u8>>>>);
+/// (Layout, optional scaling list) pair returned by the decoder's layout cache.
+type LayoutResult = (Arc<Layout>, Option<Arc<Vec<Vec<u8>>>>);
+
 /// A picture whose slices are being collected.
 struct PendingPic {
     frame: FrameRef,
@@ -81,7 +86,7 @@ pub struct Decoder {
     after_eos: bool,
     /// RASL pictures associated with the last IRAP are skipped (it had NoRaslOutputFlag = 1).
     skip_rasl: bool,
-    layout_cache: Vec<(Arc<Pps>, Arc<Sps>, Arc<Layout>, Option<Arc<Vec<Vec<u8>>>>)>,
+    layout_cache: Vec<LayoutCacheEntry>,
     out_queue: VecDeque<Output<FrameRef>>,
     shared: Arc<Shared>,
     #[cfg(feature = "threads")]
@@ -305,7 +310,7 @@ impl Decoder {
         &mut self,
         pps: &Arc<Pps>,
         sps: &Arc<Sps>,
-    ) -> Result<(Arc<Layout>, Option<Arc<Vec<Vec<u8>>>>)> {
+    ) -> Result<LayoutResult> {
         if let Some((_, _, l, s)) = self
             .layout_cache
             .iter()
