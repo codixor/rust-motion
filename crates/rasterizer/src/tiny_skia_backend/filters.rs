@@ -902,16 +902,18 @@ pub(crate) fn apply_filter(pixmap: &mut Pixmap, filter: &SceneFilter) -> Result<
             halation_radius,
             halation_color,
         } => {
-            crate::film_emulation::apply_film_emulation(
+            crate::film_emulation::apply_film_emulation_with(
                 pixmap,
-                grain_amount,
-                grain_size,
-                grain_roughness,
-                grain_seed,
-                halation_intensity,
-                halation_threshold,
-                halation_radius,
-                halation_color,
+                &crate::film_emulation::FilmEmulation {
+                    grain_amount,
+                    grain_size,
+                    grain_roughness,
+                    grain_seed,
+                    halation_intensity,
+                    halation_threshold,
+                    halation_radius,
+                    halation_color,
+                },
             );
         }
         SceneFilter::Matte {

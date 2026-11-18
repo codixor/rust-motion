@@ -5,6 +5,48 @@
 
 use tiny_skia::{Pixmap, PremultipliedColorU8};
 
+/// Film emulation settings bundle: procedural film grain plus halation glow.
+///
+/// Bundles the parameters that historically had to be passed as individual
+/// arguments to `apply_film_emulation`; pass it to
+/// [`apply_film_emulation_with`]. Field defaults match the serde defaults of
+/// [`crate::scene::SceneFilter::FilmEmulation`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FilmEmulation {
+    /// Film grain amount (0..=100, percent of full grain strength).
+    pub grain_amount: f32,
+    /// Film grain particle size (0..=100).
+    pub grain_size: f32,
+    /// Film grain roughness (0..=100).
+    pub grain_roughness: f32,
+    /// Stable random seed for the grain field.
+    pub grain_seed: u32,
+    /// Halation glow intensity around bright edges (0..=2, internally clamped).
+    pub halation_intensity: f32,
+    /// Halation luminance threshold (0..=1, internally clamped).
+    pub halation_threshold: f32,
+    /// Halation scatter radius in pixels (1..=100, internally clamped).
+    pub halation_radius: f32,
+    /// Halation tint, typically warm orange/red `[255, 60, 20, 255]`.
+    pub halation_color: [u8; 4],
+}
+
+impl Default for FilmEmulation {
+    /// Mirrors the serde defaults of [`crate::scene::SceneFilter::FilmEmulation`].
+    fn default() -> Self {
+        Self {
+            grain_amount: 0.0,
+            grain_size: 25.0,
+            grain_roughness: 50.0,
+            grain_seed: 0,
+            halation_intensity: 0.0,
+            halation_threshold: 0.75,
+            halation_radius: 12.0,
+            halation_color: [255, 60, 20, 255],
+        }
+    }
+}
+
 /// Integer hash noise function for procedural film grain generation.
 #[inline]
 fn hash_noise(x: f32, y: f32, seed: u32) -> f32 {
@@ -26,18 +68,9 @@ fn sample_grain(gx: f32, gy: f32, roughness: f32, seed: u32) -> f32 {
     n1 * (1.0 - roughness * 0.5) + n2 * (roughness * 0.5)
 }
 
-/// Apply procedural film grain and halation in-place on a `Pixmap`.
-pub fn apply_film_emulation(
-    pixmap: &mut Pixmap,
-    grain_amount: f32,
-    grain_size: f32,
-    grain_roughness: f32,
-    grain_seed: u32,
-    halation_intensity: f32,
-    halation_threshold: f32,
-    halation_radius: f32,
-    halation_color: [u8; 4],
-) {
+/// Apply procedural film grain and halation in-place on a `Pixmap` using a
+/// [`FilmEmulation`] settings bundle.
+pub fn apply_film_emulation_with(pixmap: &mut Pixmap, settings: &FilmEmulation) {
     let width = pixmap.width();
     let height = pixmap.height();
     if width == 0 || height == 0 {
@@ -45,21 +78,21 @@ pub fn apply_film_emulation(
     }
 
     // --- 1. Halation Synthesis ---
-    if halation_intensity > 0.0 && halation_radius > 0.5 {
+    if settings.halation_intensity > 0.0 && settings.halation_radius > 0.5 {
         apply_halation(
             pixmap,
-            halation_intensity.clamp(0.0, 2.0),
-            halation_threshold.clamp(0.0, 1.0),
-            halation_radius.clamp(1.0, 100.0),
-            halation_color,
+            settings.halation_intensity.clamp(0.0, 2.0),
+            settings.halation_threshold.clamp(0.0, 1.0),
+            settings.halation_radius.clamp(1.0, 100.0),
+            settings.halation_color,
         );
     }
 
     // --- 2. Procedural Film Grain Synthesis ---
-    if grain_amount > 0.0 {
-        let amt = (grain_amount / 100.0).clamp(0.0, 1.0) * 0.35;
-        let scale = 1.0 / (0.6 + (grain_size / 100.0).clamp(0.0, 1.0) * 2.4);
-        let rough = (grain_roughness / 100.0).clamp(0.0, 1.0);
+    if settings.grain_amount > 0.0 {
+        let amt = (settings.grain_amount / 100.0).clamp(0.0, 1.0) * 0.35;
+        let scale = 1.0 / (0.6 + (settings.grain_size / 100.0).clamp(0.0, 1.0) * 2.4);
+        let rough = (settings.grain_roughness / 100.0).clamp(0.0, 1.0);
 
         for y in 0..height {
             for x in 0..width {
@@ -79,7 +112,12 @@ pub fn apply_film_emulation(
                 // Film grain density response: highest in midtones & quartertones, lower in extreme highlights
                 let weight = (1.0 - (lum - 0.45).abs() * 1.6).clamp(0.1, 1.0);
 
-                let g_val = sample_grain(x as f32 * scale, y as f32 * scale, rough, grain_seed);
+                let g_val = sample_grain(
+                    x as f32 * scale,
+                    y as f32 * scale,
+                    rough,
+                    settings.grain_seed,
+                );
                 let delta = g_val * amt * weight * 255.0;
 
                 let nr = (r * 255.0 + delta).clamp(0.0, 255.0);
@@ -96,6 +134,46 @@ pub fn apply_film_emulation(
             }
         }
     }
+}
+
+/// Legacy nine-argument entry point for film emulation.
+///
+/// Kept for source compatibility with the pre-1.1 public API; it forwards to
+/// [`apply_film_emulation_with`]. New callers should construct a
+/// [`FilmEmulation`] and call [`apply_film_emulation_with`] instead.
+#[deprecated(
+    since = "1.1.1",
+    note = "use `apply_film_emulation_with` with a `FilmEmulation` settings struct instead"
+)]
+// The nine-argument shape is inherent to this legacy compatibility shim:
+// clippy::too_many_arguments cannot be fixed here without breaking the
+// public signature this shim exists to preserve. The allow is therefore
+// scoped to exactly this shim and never applies to the settings-based API.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_film_emulation(
+    pixmap: &mut Pixmap,
+    grain_amount: f32,
+    grain_size: f32,
+    grain_roughness: f32,
+    grain_seed: u32,
+    halation_intensity: f32,
+    halation_threshold: f32,
+    halation_radius: f32,
+    halation_color: [u8; 4],
+) {
+    apply_film_emulation_with(
+        pixmap,
+        &FilmEmulation {
+            grain_amount,
+            grain_size,
+            grain_roughness,
+            grain_seed,
+            halation_intensity,
+            halation_threshold,
+            halation_radius,
+            halation_color,
+        },
+    );
 }
 
 /// Extract specular highlights, diffuse with a warm glow, and screen blend back onto the pixmap.
