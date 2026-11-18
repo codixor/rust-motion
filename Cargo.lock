@@ -478,6 +478,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
+name = "castaway"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dec551ab6e7578819132c713a93c022a05d60159dc86e7a7050223577484c55a"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "cc"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -601,6 +610,20 @@ name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
+
+[[package]]
+name = "compact_str"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79fcda08c33bb58b97008b2cdada6622500e949e060f5913361763121abd2416"
+dependencies = [
+ "castaway",
+ "cfg-if",
+ "itoa",
+ "serde",
+ "static_assertions",
+ "zmij",
+]
 
 [[package]]
 name = "console_error_panic_hook"
@@ -2093,10 +2116,9 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 [[package]]
 name = "no-std-compat"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b93853da6d84c2e3c7d730d6473e8817692dd89be387eb01b94d7f108ecb5b8c"
+source = "git+https://gitlab.com/jD91mZM2/no-std-compat.git#47a5dfb6b48e8f8bf2fc4f6109c9b75f5c3c0b10"
 dependencies = [
- "spin 0.5.2",
+ "spin 0.7.2",
 ]
 
 [[package]]
@@ -3076,12 +3098,12 @@ dependencies = [
 
 [[package]]
 name = "rhai"
-version = "1.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd4dd0f8c36625202a4ba553c416c19b719947cd2a31d1bda06126e4a5727daf"
+version = "1.27.0"
+source = "git+https://github.com/codixor/rhai.git?rev=573449427f1b107ac92e66f6fa370b457c16f61b#573449427f1b107ac92e66f6fa370b457c16f61b"
 dependencies = [
  "ahash",
  "bitflags 2.13.1",
+ "compact_str",
  "no-std-compat",
  "num-traits",
  "once_cell",
@@ -3095,9 +3117,8 @@ dependencies = [
 
 [[package]]
 name = "rhai_codegen"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3cd3a7535e50bf36857e7be7bec276d334e8c2dfa469c2201226fd01638ea5ca"
+version = "3.3.0"
+source = "git+https://github.com/codixor/rhai.git?rev=573449427f1b107ac92e66f6fa370b457c16f61b#573449427f1b107ac92e66f6fa370b457c16f61b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3239,6 +3260,7 @@ dependencies = [
 name = "rust-motion-cli"
 version = "1.0.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "axum",
  "base64",
@@ -3985,7 +4007,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fb72c633efbaa2dd666986505016c32c3044395ceaf881518399d2f4127ee29"
 dependencies = [
  "autocfg",
- "serde",
  "static_assertions",
  "version_check",
 ]
@@ -4002,9 +4023,9 @@ dependencies = [
 
 [[package]]
 name = "spin"
-version = "0.5.2"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
+checksum = "9335ac53859132805f619b68dab9229ec74e45ad9c92d5edca2a80240806eb65"
 
 [[package]]
 name = "spin"
@@ -4297,9 +4318,6 @@ name = "thin-vec"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0f7e269b48f0a7dd0146680fa24b50cc67fc0373f086a5b2f99bd084639b482"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "thiserror"

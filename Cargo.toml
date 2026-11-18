@@ -65,7 +65,7 @@ futures           = "0.3"
 # Serialization
 serde             = { version = "1", features = ["derive", "rc"] }
 serde_json        = "1"
-rhai              = { version = "1.25", features = ["serde", "sync"] }
+rhai              = { git = "https://github.com/codixor/rhai.git", rev = "573449427f1b107ac92e66f6fa370b457c16f61b", default-features = false, features = ["std", "compact_str", "serde", "sync"] }
 
 # Logging
 tracing           = "0.1"
