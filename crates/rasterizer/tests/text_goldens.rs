@@ -174,7 +174,7 @@ fn sample_rgba() -> Vec<u8> {
                 ((x * 5 + y * 17 + 64) % 256) as u8,
             );
             // A few opaque geometric accents keep codecs honest.
-            let a = if (x >= 8 && x < 20 && y >= 8 && y < 24) || (x >= 40 && y >= 40) {
+            let a = if ((8..20).contains(&x) && (8..24).contains(&y)) || (x >= 40 && y >= 40) {
                 255u8
             } else {
                 200u8
