@@ -100,7 +100,16 @@ pub fn scale_and_idct8x8(
     let mut g = [0i32; 64];
     for x in 0..8 {
         let col = idct_1d(
-            [d[x], d[8 + x], d[16 + x], d[24 + x], d[32 + x], d[40 + x], d[48 + x], d[56 + x]],
+            [
+                d[x],
+                d[8 + x],
+                d[16 + x],
+                d[24 + x],
+                d[32 + x],
+                d[40 + x],
+                d[48 + x],
+                d[56 + x],
+            ],
             64,
             7,
         );
@@ -117,7 +126,11 @@ pub fn scale_and_idct8x8(
 
     for y in 0..8 {
         let r = &g[y * 8..y * 8 + 8];
-        let row = idct_1d([r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]], round, bd_shift);
+        let row = idct_1d(
+            [r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]],
+            round,
+            bd_shift,
+        );
         for i in 0..8 {
             out[y * 8 + i] = (row[i] + mid).clamp(0, max_val) as u16;
         }
@@ -186,7 +199,16 @@ pub fn fdct8x8(samples: &[u16; 64], bit_depth: u8) -> [i32; 64] {
     let mut f = [0i32; 64];
     for u in 0..8 {
         let col = fdct_1d(
-            [t[u], t[8 + u], t[16 + u], t[24 + u], t[32 + u], t[40 + u], t[48 + u], t[56 + u]],
+            [
+                t[u],
+                t[8 + u],
+                t[16 + u],
+                t[24 + u],
+                t[32 + u],
+                t[40 + u],
+                t[48 + u],
+                t[56 + u],
+            ],
             128,
             8,
         );

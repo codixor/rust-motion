@@ -306,11 +306,7 @@ impl Decoder {
         Ok(())
     }
 
-    fn layout_for(
-        &mut self,
-        pps: &Arc<Pps>,
-        sps: &Arc<Sps>,
-    ) -> Result<LayoutResult> {
+    fn layout_for(&mut self, pps: &Arc<Pps>, sps: &Arc<Sps>) -> Result<LayoutResult> {
         if let Some((_, _, l, s)) = self
             .layout_cache
             .iter()

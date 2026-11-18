@@ -301,7 +301,12 @@ fn track_beats(env: &[f32], period: f64) -> Vec<usize> {
         let mut best = 0.0f64;
         let mut arg = usize::MAX;
         if t >= lo {
-            for (prev, &s) in score.iter().enumerate().take(t - lo + 1).skip(t.saturating_sub(hi)) {
+            for (prev, &s) in score
+                .iter()
+                .enumerate()
+                .take(t - lo + 1)
+                .skip(t.saturating_sub(hi))
+            {
                 let r = ((t - prev) as f64 / period).ln();
                 let v = s - tight * r * r;
                 if arg == usize::MAX || v > best {

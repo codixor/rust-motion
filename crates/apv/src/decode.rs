@@ -306,8 +306,20 @@ fn decode_pbu_planes(
             let th_c = (tile.h_luma as usize) / sub_h;
             let tx_c = (tile.x0 as usize) / sub_w;
             let ty_c = (tile.y0 as usize) / sub_h;
-            copy_tile_comp(&tile.comps[1], (tw_c, th_c), (tx_c, ty_c), &mut out.cb, (cw, ch));
-            copy_tile_comp(&tile.comps[2], (tw_c, th_c), (tx_c, ty_c), &mut out.cr, (cw, ch));
+            copy_tile_comp(
+                &tile.comps[1],
+                (tw_c, th_c),
+                (tx_c, ty_c),
+                &mut out.cb,
+                (cw, ch),
+            );
+            copy_tile_comp(
+                &tile.comps[2],
+                (tw_c, th_c),
+                (tx_c, ty_c),
+                &mut out.cr,
+                (cw, ch),
+            );
         }
         if hdr.chroma == ChromaFormat::Yuv4444 {
             if let Some(alpha) = out.alpha.as_mut() {

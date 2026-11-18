@@ -92,7 +92,14 @@ impl Spectral {
     }
     /// Window `input` into re/im and run the forward FFT.
     pub(crate) fn analyse(&mut self, input: &[f32]) {
-        for (((re, im), &x), &w) in self.re.iter_mut().zip(self.im.iter_mut()).zip(input.iter()).zip(self.window.iter()).take(input.len()) {
+        for (((re, im), &x), &w) in self
+            .re
+            .iter_mut()
+            .zip(self.im.iter_mut())
+            .zip(input.iter())
+            .zip(self.window.iter())
+            .take(input.len())
+        {
             *re = x * w;
             *im = 0.0;
         }
@@ -108,7 +115,13 @@ impl Spectral {
             self.im[n - k] = -self.im[k];
         }
         self.fft.inverse(&mut self.re, &mut self.im);
-        for ((&re, &w), o) in self.re.iter().zip(self.window.iter()).zip(out.iter_mut()).take(n) {
+        for ((&re, &w), o) in self
+            .re
+            .iter()
+            .zip(self.window.iter())
+            .zip(out.iter_mut())
+            .take(n)
+        {
             *o += re * w * scale;
         }
     }

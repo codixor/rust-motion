@@ -1920,7 +1920,13 @@ impl<'a, 'b> SliceEnc<'a, 'b> {
             let mut y = [0u8; 256];
             let mut u = [0u8; 64];
             let mut v = [0u8; 64];
-            self.pred_block(r, (px, py), (0, 0, 16, 16), skip_mv, (&mut y, &mut u, &mut v));
+            self.pred_block(
+                r,
+                (px, py),
+                (0, 0, 16, 16),
+                skip_mv,
+                (&mut y, &mut u, &mut v),
+            );
             let s = sad16(&src.y, 16, &y, 16, 16);
             let qstep_thresh = (f.qt.v4[(qp % 6) as usize][0] << (qp / 6)) as u32 * 16;
             if s < qstep_thresh * 2 {
@@ -2073,8 +2079,12 @@ impl<'a, 'b> SliceEnc<'a, 'b> {
         let mut refs = [-1i8; 2];
         let mut mvp = [Mv::ZERO; 2];
         for (l, refs_l) in refs.iter_mut().enumerate() {
-            let a = self.nb_part(&cur, 0, (mx, my), -1, 0, l).map_or(-1, |v| v.0);
-            let b = self.nb_part(&cur, 0, (mx, my), 0, -1, l).map_or(-1, |v| v.0);
+            let a = self
+                .nb_part(&cur, 0, (mx, my), -1, 0, l)
+                .map_or(-1, |v| v.0);
+            let b = self
+                .nb_part(&cur, 0, (mx, my), 0, -1, l)
+                .map_or(-1, |v| v.0);
             let c = self
                 .nb_part(&cur, 0, (mx, my), 4, -1, l)
                 .or_else(|| self.nb_part(&cur, 0, (mx, my), -1, -1, l))
@@ -2390,11 +2400,13 @@ impl<'a, 'b> SliceEnc<'a, 'b> {
                 }
             });
         }
-        let mut best = best.unwrap_or_else(|| self.analyse_intra((mx, my), qp, av, e, src, u64::MAX));
+        let mut best =
+            best.unwrap_or_else(|| self.analyse_intra((mx, my), qp, av, e, src, u64::MAX));
         // --- 16x8 / 8x16 partitions with a per-partition prediction direction
         if f.p.partitions && best.cost > 256 * 4 {
             for part in [Part::P16x8, Part::P8x16] {
-                if let Some(c) = self.b_partition((mx, my), part, src, qp, lam, [res[0].0, res[1].0])
+                if let Some(c) =
+                    self.b_partition((mx, my), part, src, qp, lam, [res[0].0, res[1].0])
                 {
                     let better = if f.p.rd {
                         self.rd_cost(mx, my, &c, src, qp) < self.rd_cost(mx, my, &best, src, qp)

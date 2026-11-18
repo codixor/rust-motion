@@ -34,7 +34,6 @@ use std::io::{self, Seek, SeekFrom, Write};
 use crate::Rational;
 use labels::*;
 
-
 /// A SMPTE ST 330 basic UMID (32 bytes): package identifiers.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Umid(pub [u8; 32]);
