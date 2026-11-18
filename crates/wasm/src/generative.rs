@@ -64,6 +64,9 @@ impl GenerativeCanvas {
     /// Render a TouchDesigner-inspired Noise TOP in real time.
     ///
     /// Computes procedural multi-octave fBm Simplex noise with animated time offset and color gradient.
+    // The nine-parameter shape preserves the pre-existing wasm_bindgen JS API;
+    // reducing it would break JS callers, so this allow is scoped to this method.
+    #[allow(clippy::too_many_arguments)]
     pub fn render_noise(
         &mut self,
         time: f64,
