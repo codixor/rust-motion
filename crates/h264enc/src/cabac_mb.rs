@@ -404,8 +404,7 @@ pub fn write_mb<S: BinSink>(s: &mut S, nb: &NbCtx, c: &MbCode) {
     if c.kind == MbKind::I16x16 {
         write_residual(s, Cat::LumaDc, &c.luma_dc, cbf_dc(nb, 0));
         if c.cbp & 15 != 0 {
-            for blk in 0..16 {
-                let (x, y) = BLK4_XY[blk];
+            for (blk, &(x, y)) in BLK4_XY.iter().enumerate() {
                 write_residual(
                     s,
                     Cat::LumaAc,

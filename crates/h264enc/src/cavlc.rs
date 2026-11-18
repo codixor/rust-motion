@@ -60,8 +60,7 @@ pub fn write_residual(w: &mut BitWriter, coeffs: &[i16], nc: i32) -> u8 {
         return 0;
     }
     let mut suffix_len: u32 = if total > 10 && t1 < 3 { 1 } else { 0 };
-    for i in 0..total {
-        let l = levels[i];
+    for (i, &l) in levels.iter().enumerate().take(total) {
         if i < t1 {
             w.write_bit(l < 0);
             continue;
@@ -221,8 +220,7 @@ pub fn write_mb(w: &mut BitWriter, nb: &NbCtx, c: &MbCode) {
     if c.kind == MbKind::I16x16 {
         write_residual(w, &c.luma_dc, luma_nc(0));
         if c.cbp & 15 != 0 {
-            for blk in 0..16 {
-                let (x, y) = BLK4_XY[blk];
+            for (blk, &(x, y)) in BLK4_XY.iter().enumerate() {
                 write_residual(w, &c.luma4[blk][1..16], luma_nc(y * 4 + x));
             }
         }
@@ -236,8 +234,8 @@ pub fn write_mb(w: &mut BitWriter, nb: &NbCtx, c: &MbCode) {
                 let (x, y) = BLK4_XY[blk];
                 if c.t8x8 {
                     let mut sub = [0i16; 16];
-                    for k in 0..16 {
-                        sub[k] = c.luma8[b8][4 * k + i];
+                    for (k, sub_k) in sub.iter_mut().enumerate() {
+                        *sub_k = c.luma8[b8][4 * k + i];
                     }
                     write_residual(w, &sub, luma_nc(y * 4 + x));
                 } else {

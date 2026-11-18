@@ -207,7 +207,7 @@ pub fn deblock_band<'a>(
             // ---- vertical edges (dir 0) then horizontal (dir 1)
             for dir in 0..2 {
                 let mut bs_all = [[0u8; 4]; 4];
-                for e in 0..4 {
+                for (e, bs_all_e) in bs_all.iter_mut().enumerate() {
                     if e == 0 && ((dir == 0 && mx == 0) || (dir == 1 && my == 0)) {
                         continue;
                     }
@@ -224,7 +224,7 @@ pub fn deblock_band<'a>(
                         q
                     };
                     let mut bs = [0u8; 4];
-                    for s in 0..4 {
+                    for (s, bs_s) in bs.iter_mut().enumerate() {
                         let (iq, ip) = if dir == 0 {
                             let iq = s * 4 + e;
                             (iq, if e == 0 { s * 4 + 3 } else { iq - 1 })
@@ -232,9 +232,9 @@ pub fn deblock_band<'a>(
                             let iq = e * 4 + s;
                             (iq, if e == 0 { 12 + s } else { iq - 4 })
                         };
-                        bs[s] = bs_of(p_mb, ip, q, iq, e == 0, ids);
+                        *bs_s = bs_of(p_mb, ip, q, iq, e == 0, ids);
                     }
-                    bs_all[e] = bs;
+                    *bs_all_e = bs;
                     if bs == [0; 4] {
                         continue;
                     }

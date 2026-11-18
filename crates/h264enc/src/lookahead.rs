@@ -17,12 +17,12 @@ impl LowRes {
         let row = |y: usize, out: &mut [u8]| {
             let r0 = f.y.idx(0, (2 * y) as isize);
             let r1 = f.y.idx(0, (2 * y + 1) as isize);
-            for x in 0..w {
+            for (x, out_x) in out.iter_mut().take(w).enumerate() {
                 let s = f.y.data[r0 + 2 * x] as u32
                     + f.y.data[r0 + 2 * x + 1] as u32
                     + f.y.data[r1 + 2 * x] as u32
                     + f.y.data[r1 + 2 * x + 1] as u32;
-                out[x] = ((s + 2) >> 2) as u8;
+                *out_x = ((s + 2) >> 2) as u8;
             }
         };
         #[cfg(feature = "threads")]
@@ -159,14 +159,14 @@ pub fn complexity(cur: &LowRes, prev: Option<&LowRes>) -> Complexity {
 pub fn aq_offsets(f: &Frame, mbw: usize, mbh: usize, strength: f32) -> Vec<f32> {
     let mut e = vec![0f32; mbw * mbh];
     let row = |my: usize, e: &mut [f32]| {
-        for mx in 0..mbw {
+        for (mx, e_mx) in e.iter_mut().take(mbw).enumerate() {
             let i = f.y.idx((mx * 16) as isize, (my * 16) as isize);
             let vy = block_var(&f.y.data[i..], f.y.stride, 16, 16) as f32 / 256.0;
             let iu = f.u.idx((mx * 8) as isize, (my * 8) as isize);
             let vu = block_var(&f.u.data[iu..], f.u.stride, 8, 8) as f32 / 64.0;
             let iv = f.v.idx((mx * 8) as isize, (my * 8) as isize);
             let vv = block_var(&f.v.data[iv..], f.v.stride, 8, 8) as f32 / 64.0;
-            e[mx] = (vy + 0.5 * (vu + vv) + 1.0).log2();
+            *e_mx = (vy + 0.5 * (vu + vv) + 1.0).log2();
         }
     };
     #[cfg(feature = "threads")]

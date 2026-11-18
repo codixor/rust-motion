@@ -79,11 +79,14 @@ fn rgba_to_i420(rgba: &[u8], width: u32, height: u32) -> (Vec<u8>, Vec<u8>, Vec<
     (y_plane, u_plane, v_plane)
 }
 
+/// Encoded payload: (bitstream, y_plane, u_plane, v_plane).
+type EncodedFixture = (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>);
+
 fn encode_fixture(
     width: u32,
     height: u32,
     frames: usize,
-) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>), String> {
+) -> Result<EncodedFixture, String> {
     let mut cfg = EncoderConfig::new(width, height, 30, 1);
     cfg.rate = RateControl::Crf(20.0);
     cfg.bframes = 0;
