@@ -2161,7 +2161,8 @@ impl<'a, 'b> SliceEnc<'a, 'b> {
         ];
         for l in 0..2 {
             let (a, b, c) = &mut preds[l];
-            for (pi, &p_mv) in mvs[l].iter().enumerate() {
+            // 16x8 / 8x16 B-partitions have exactly two partitions; the mvs array is 4-wide.
+            for (pi, &p_mv) in mvs[l].iter().take(2).enumerate() {
                 self.pred_block(rp[l], (px, py), part.rect(pi), p_mv, (a, b, c));
             }
         }
@@ -2173,7 +2174,8 @@ impl<'a, 'b> SliceEnc<'a, 'b> {
         let (mut py_, mut pu, mut pv) = ([0u8; 256], [0u8; 64], [0u8; 64]);
         let mut dirs = [0u8; 4];
         let mut cost = ((lam * 8) >> 8) as u64;
-        for (pi, dir_slot) in dirs.iter_mut().enumerate() {
+        // Same two-partition domain as above; dirs is 4-wide but only slots 0..2 are used.
+        for (pi, dir_slot) in dirs.iter_mut().take(2).enumerate() {
             let (x, y, w, h) = part.rect(pi);
             let mut bestd = (u64::MAX, 0usize);
             for (d, s) in srcs.iter().enumerate() {
