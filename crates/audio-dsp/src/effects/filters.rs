@@ -195,7 +195,7 @@ impl<const N: usize> GraphicEq<N> {
         for (i, &f) in Self::freqs().iter().enumerate() {
             let g = self.pv.v(Self::PARAMS[i].id);
             self.bank
-                .set_band(i, true, FilterType::Peaking, f, g, q, snap);
+                .set_band(i, true, (FilterType::Peaking, f, g, q), snap);
         }
         self.out.set(db_to_gain(self.pv.v("gain")));
         if snap {
@@ -376,13 +376,13 @@ impl FullParametricEq {
         for slot in 0..4 {
             let (on, q) = pass(hp_on, hp_s, slot);
             self.bank
-                .set_band(slot, on, FilterType::HighPass, hp_f, 0.0, q, snap);
+                .set_band(slot, on, (FilterType::HighPass, hp_f, 0.0, q), snap);
             let (on, q) = pass(lp_on, lp_s, slot);
             self.bank
-                .set_band(11 + slot, on, FilterType::LowPass, lp_f, 0.0, q, snap);
+                .set_band(11 + slot, on, (FilterType::LowPass, lp_f, 0.0, q), snap);
         }
         for (i, (on, kind, f, g, q)) in bands.into_iter().enumerate() {
-            self.bank.set_band(4 + i, on, kind, f, g, q, snap);
+            self.bank.set_band(4 + i, on, (kind, f, g, q), snap);
         }
         self.out.set(db_to_gain(self.pv.v("master_gain")));
         if snap {
@@ -484,10 +484,7 @@ impl NotchFilter {
             self.bank.set_band(
                 i,
                 self.pv.on(ids[0]),
-                FilterType::Cut,
-                self.pv.v(ids[1]),
-                self.pv.v(ids[2]),
-                q,
+                (FilterType::Cut, self.pv.v(ids[1]), self.pv.v(ids[2]), q),
                 snap,
             );
         }
@@ -663,7 +660,8 @@ impl AudioEffect for ScientificFilter {
     fn process(&mut self, channels: &mut [&mut [f32]]) {
         let n = block_len(channels);
         let nch = channels.len().min(self.state.len());
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             if self.counter == 0 && self.dirty {
                 self.redesign();
             }
@@ -675,13 +673,14 @@ impl AudioEffect for ScientificFilter {
             }
             let g = self.gain.tick() as f64;
             let secs = self.sections.as_slice();
-            for ch in 0..nch {
-                let mut x = channels[ch][i] as f64;
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let mut x = channel[i] as f64;
                 for (c, st) in secs.iter().zip(self.state[ch].iter_mut()) {
                     x = st.tick(c, x);
                 }
-                channels[ch][i] = (x * g) as f32;
+                channel[i] = (x * g) as f32;
             }
+            i += 1;
         }
     }
 }
@@ -850,8 +849,9 @@ impl AudioEffect for FftFilter {
         let (n, hop) = (self.n, self.hop);
         let scale = 1.0 / (n as f32 * 2.0);
         let bins = n / 2 + 1;
-        for i in 0..len {
-            for ch in 0..nch {
+        let mut i = 0;
+        while i < len {
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
                 let spec = &mut self.spec;
                 let gains = &mut self.gains;
                 let target = &self.target;
@@ -864,14 +864,15 @@ impl AudioEffect for FftFilter {
                         }
                     }
                     spec.analyse(input);
-                    for k in 0..bins {
-                        spec.re[k] *= gains[k];
-                        spec.im[k] *= gains[k];
+                    for (k, &g) in gains.iter().take(bins).enumerate() {
+                        spec.re[k] *= g;
+                        spec.im[k] *= g;
                     }
                     spec.synthesise_add(out, scale);
                 };
-                channels[ch][i] = self.stft[ch].tick(channels[ch][i], hop, &mut frame);
+                channel[i] = self.stft[ch].tick(channel[i], hop, &mut frame);
             }
+            i += 1;
         }
     }
 }

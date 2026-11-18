@@ -104,19 +104,23 @@ impl AudioEffect for ChannelMixer {
     fn process(&mut self, channels: &mut [&mut [f32]]) {
         let n = block_len(channels);
         if channels.len() < 2 {
-            for i in 0..n {
-                let g: Vec4 = self.tick();
-                channels[0][i] *= g[0] + g[1];
+            if let Some(first) = channels.first_mut() {
+                for x in first.iter_mut().take(n) {
+                    let g: Vec4 = self.tick();
+                    *x *= g[0] + g[1];
+                }
             }
             return;
         }
         let (a, b) = channels.split_at_mut(1);
         let (l, r) = (&mut a[0], &mut b[0]);
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let g = self.tick();
             let (x, y) = (l[i], r[i]);
             l[i] = g[0] * x + g[1] * y;
             r[i] = g[2] * x + g[3] * y;
+            i += 1;
         }
     }
 }
@@ -234,22 +238,24 @@ impl AudioEffect for Distortion {
         let tone = self.pv.v("tone");
         let a = OnePole::alpha(tone, self.sr);
         let r = DcBlock::r(self.sr);
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let (d, b, o, m) = (
                 self.drive.tick(),
                 self.bias.tick(),
                 self.out.tick(),
                 self.mix.tick(),
             );
-            for ch in 0..nch {
-                let x = channels[ch][i];
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i];
                 let mut y = shape(kind, d * x + b) - shape(kind, b);
                 y = self.dc[ch].tick(r, y);
                 if tone < 19999.0 {
                     y = self.lp[ch].lp(a, y);
                 }
-                channels[ch][i] = x + m * (y * o - x);
+                channel[i] = x + m * (y * o - x);
             }
+            i += 1;
         }
     }
 }
@@ -401,7 +407,8 @@ impl AudioEffect for GuitarSuite {
             _ => 2,
         };
         let r = DcBlock::r(self.sr);
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let (mix, out, drive) = (self.mix.tick(), self.out.tick(), self.drive.tick());
             let peak = channels[..nch]
                 .iter()
@@ -420,8 +427,8 @@ impl AudioEffect for GuitarSuite {
             let g = db_to_gain(self.env);
             // Distortion level compensation keeps the output near the input level.
             let comp_out = 1.0 / drive.sqrt();
-            for ch in 0..nch {
-                let x = channels[ch][i];
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i];
                 let v = x * g * drive;
                 let mut y = match kind {
                     0 => v.tanh(),
@@ -435,8 +442,9 @@ impl AudioEffect for GuitarSuite {
                     yd = st[k].tick(c, yd);
                 }
                 yd = st[4].tick(&self.filt, yd);
-                channels[ch][i] = x + mix * (yd as f32 * out - x);
+                channel[i] = x + mix * (yd as f32 * out - x);
             }
+            i += 1;
         }
     }
 }
@@ -614,8 +622,8 @@ impl AudioEffect for Mastering {
         while start < n {
             let len = (n - start).min(CHUNK);
             // EQ in place.
-            for ch in 0..nch {
-                for v in channels[ch][start..start + len].iter_mut() {
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                for v in channel[start..start + len].iter_mut() {
                     let mut y = *v as f64;
                     for (k, c) in self.eq.iter().enumerate() {
                         y = self.st[ch][k].tick(c, y);
@@ -762,13 +770,14 @@ impl AudioEffect for VocalEnhancer {
         let nch = channels.len().min(self.st.len());
         let voice = self.pv.idx("mode") < 2;
         let (att, rel) = (coef(5.0, self.sr), coef(150.0, self.sr));
-        for i in 0..n {
-            for ch in 0..nch {
-                let mut y = channels[ch][i] as f64;
+        let mut i = 0;
+        while i < n {
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let mut y = channel[i] as f64;
                 for (k, c) in self.eq.iter().enumerate() {
                     y = self.st[ch][k].tick(c, y);
                 }
-                channels[ch][i] = y as f32;
+                channel[i] = y as f32;
             }
             if voice {
                 let peak = channels[..nch]
@@ -790,6 +799,7 @@ impl AudioEffect for VocalEnhancer {
                     ch[i] *= g;
                 }
             }
+            i += 1;
         }
     }
 }

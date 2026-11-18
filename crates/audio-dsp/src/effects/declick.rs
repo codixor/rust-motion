@@ -132,8 +132,8 @@ impl ClickRemover {
 
     fn analyse(c: &mut Chan, s: &mut Scratch, p: usize, k: f32, max_len: usize) -> usize {
         let buf = &mut c.buf;
-        for i in 0..SPAN {
-            s.xw[i] = (buf[i] * s.win[i]) as f64;
+        for ((xw, &b), &w) in s.xw.iter_mut().zip(buf.iter()).zip(s.win.iter()).take(SPAN) {
+            *xw = (b * w) as f64;
         }
         let mut a = [0.0f64; MAX_ORDER + 1];
         if !lpc(&s.xw, p, &mut a) {

@@ -83,26 +83,28 @@ impl AudioEffect for DeHum {
     fn process(&mut self, channels: &mut [&mut [f32]]) {
         let n = block_len(channels);
         let nch = channels.len().min(self.state.len());
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let mut mix = [0.0f64; MAX_HARMONICS];
             for (m, s) in mix.iter_mut().zip(self.stage_mix.iter_mut()) {
                 *m = s.tick() as f64;
             }
             let amt = self.amount.tick() as f64;
-            for ch in 0..nch {
-                let dry = channels[ch][i] as f64;
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let dry = channel[i] as f64;
                 let mut x = dry;
-                for k in 0..MAX_HARMONICS {
+                for (k, mix_k) in mix.iter().copied().enumerate() {
                     let st = &mut self.state[ch][k];
-                    if mix[k] > 0.0 {
+                    if mix_k > 0.0 {
                         let y = st.tick(&self.coeffs[k], x);
-                        x += mix[k] * (y - x);
+                        x += mix_k * (y - x);
                     } else {
                         st.reset();
                     }
                 }
-                channels[ch][i] = (dry + amt * (x - dry)) as f32;
+                channel[i] = (dry + amt * (x - dry)) as f32;
             }
+            i += 1;
         }
     }
 }
@@ -224,7 +226,7 @@ impl AudioEffect for DeNoise {
         let (n, hop, sub_frames) = (self.n, self.hop, self.sub_frames);
         let (floor, thr, release) = (self.floor, self.thr, self.release);
         let scale = 1.0 / (n as f32 * 2.0);
-        for ch in 0..nch {
+        for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
             let st = &mut self.noise[ch];
             let spec = &mut self.spec;
             let sg = &mut self.smoothed_gains;
@@ -263,19 +265,19 @@ impl AudioEffect for DeNoise {
                     st.frames_in_sub = 0;
                 }
                 // Frequency smoothing (3-tap) to reduce musical noise.
-                for k in 0..bins {
+                for (k, sg_k) in sg.iter_mut().take(bins).enumerate() {
                     let a = st.gains[k.saturating_sub(1)];
                     let b = st.gains[k];
                     let c = st.gains[(k + 1).min(bins - 1)];
-                    sg[k] = 0.25 * a + 0.5 * b + 0.25 * c;
+                    *sg_k = 0.25 * a + 0.5 * b + 0.25 * c;
                 }
-                for k in 0..bins {
-                    spec.re[k] *= sg[k];
-                    spec.im[k] *= sg[k];
+                for (k, &sg_k) in sg.iter().take(bins).enumerate() {
+                    spec.re[k] *= sg_k;
+                    spec.im[k] *= sg_k;
                 }
                 spec.synthesise_add(out, scale);
             };
-            for v in channels[ch][..len].iter_mut() {
+            for v in channel[..len].iter_mut() {
                 *v = self.stft[ch].tick(*v, hop, &mut frame);
             }
         }

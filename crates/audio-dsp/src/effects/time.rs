@@ -132,18 +132,20 @@ impl AudioEffect for Delay {
         let n = block_len(channels);
         let nch = channels.len().min(self.bufs.len());
         let len = self.bufs[0].len();
-        for i in 0..n {
+        let mut i = 0;
+        while i < n {
             let d = self.time.tick();
             let fb = self.feedback.tick();
             let mix = self.mix.tick();
-            for ch in 0..nch {
-                let x = channels[ch][i];
+            for (ch, channel) in channels.iter_mut().take(nch).enumerate() {
+                let x = channel[i];
                 let buf = &mut self.bufs[ch];
                 let yd = read_frac(buf, self.w, d);
                 buf[self.w] = flush32(x + fb * yd);
-                channels[ch][i] = x + mix * (yd - x);
+                channel[i] = x + mix * (yd - x);
             }
             self.w = if self.w + 1 == len { 0 } else { self.w + 1 };
+            i += 1;
         }
     }
 }
@@ -503,11 +505,11 @@ impl Reverb {
 
             let mut v = [0.0f32; FDN];
             let mut sum = 0.0;
-            for k in 0..FDN {
+            for (k, v_k) in v.iter_mut().enumerate() {
                 let d = read_frac_reference(&self.lines[k], self.w, self.len[k].value());
                 self.lp[k] = flush32(d + (self.lp[k] - d) * damp);
-                v[k] = self.lp[k] * self.gains[k];
-                sum += v[k];
+                *v_k = self.lp[k] * self.gains[k];
+                sum += *v_k;
             }
             let (mut wl, mut wr) = (0.0, 0.0);
             for k in 0..FDN {
